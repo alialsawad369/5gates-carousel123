@@ -1,5 +1,5 @@
-'use client '
-import { useState, useEffect, useRef } from 'react'
+'use client'
+import React, { useState, useEffect, useRef } from 'react'
 
 type TextAlign = 'top'|'middle'|'bottom'
 type Slide = { headline:string; body:string; handle:string; icon?:string; bgImage?:string; textAlign?:TextAlign; textX?:number; textY?:number; overlayOpacity?:number }
@@ -385,7 +385,7 @@ export default function App(){
                       <button onClick={()=>setAiOpen(true)} style={btnR}>✦ توليد AI</button>
                     </div>
                   ):slides.map((sl,i)=>(
-                    <SlideThumb key={`${i}-${theme}-${fs}-${sl.headline.slice(0,6)}-${sl.icon}-${sl.bgImage}-${sl.textAlign}-${sl.textX}-${sl.textY}-${sl.overlayOpacity}`}
+                    <SlideThumb key={i+'-'+theme+'-'+fs+'-'+(sl.icon||'')+'-'+(sl.bgImage||'')+'-'+(sl.textAlign||'')+'-'+(sl.textX||0)+'-'+(sl.textY||0)}
                       slide={sl} idx={i} total={slides.length} theme={theme} fs={fs} active={active===i} onClick={()=>setActive(i)} size={180}/>
                   ))}
                 </div>
@@ -642,8 +642,4 @@ export default function App(){
       `}</style>
     </div>
   )
-}
-
-function Sec({label,children}:{label:string;children:React.ReactNode}){
-  return <div style={{marginBottom:14,borderTop:'1px solid rgba(255,255,255,0.06)',paddingTop:12}}><div style={{fontSize:9,fontWeight:800,letterSpacing:2,color:'#555',marginBottom:9,textTransform:'uppercase'}}>{label}</div>{children}</div>
 }
