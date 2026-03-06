@@ -129,12 +129,13 @@ function drawThumb(slide:Slide,idx:number,total:number,theme:Theme,fs:number,can
   ctx.fillStyle=t.hl; ctx.beginPath(); ctx.roundRect(W-195*W/1080,H*0.845,115*W/1080,7*H/1350,4); ctx.fill()
   ctx.font=`${Math.round(88*pfs)}px serif`; ctx.textAlign='right'; ctx.textBaseline='top'
   ctx.fillText(getIcon(slide.headline,slide.icon),W-75*W/1080,72*H/1350)
-  ctx.font=`900 ${Math.round(30*pfs)}px 'Tajawal','Cairo',sans-serif`
+  const F="'Cairo','Tajawal',Arial,sans-serif"
+  ctx.font=`900 ${Math.round(30*pfs)}px ${F}`
   ctx.fillStyle=slide.bgImage?'rgba(255,255,255,0.5)':t.brand; ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText('5GATES',W/2,65*H/1350)
   const txOff=(slide.textX??0)/100*W*0.3,tyOff=(slide.textY??0)/100*H*0.25
   const vPos=slide.textAlign??'middle',baseY=(vPos==='top'?H*0.18:vPos==='bottom'?H*0.55:H*0.28)
   const hs=Math.round(88*pfs),lh=hs*1.32,tr=W-80*W/1080+txOff,mx=W-180*W/1080
-  ctx.font=`900 ${hs}px 'Cairo',sans-serif`; ctx.textAlign='right'; ctx.textBaseline='top'
+  ctx.font=`900 ${hs}px ${F}`; ctx.textAlign='right'; ctx.textBaseline='top'
   const plain=slide.headline.replace(/\*+/g,''),words=plain.split(' '),lines:string[]=[]; let cur=''
   for(const w of words){const test=cur?cur+' '+w:w; if(ctx.measureText(test).width>mx&&cur){lines.push(cur);cur=w}else cur=test}
   if(cur)lines.push(cur)
@@ -142,7 +143,7 @@ function drawThumb(slide:Slide,idx:number,total:number,theme:Theme,fs:number,can
   for(const line of lines){
     const segs=parseSegs(line.trim()); let x=tr
     for(let si=segs.length-1;si>=0;si--){
-      const s=segs[si]; ctx.font=`900 ${hs}px 'Cairo',sans-serif`
+      const s=segs[si]; ctx.font=`900 ${hs}px ${F}`
       ctx.fillStyle=s.color||(slide.bgImage?'#FFFFFF':t.text)
       const sw=ctx.measureText(s.text).width; ctx.fillText(s.text,x,ly); x-=sw
     }
@@ -155,10 +156,13 @@ function SlideThumb({slide,idx,total,theme,fs,active,onClick,size=190}:{slide:Sl
   useEffect(()=>{
     if(!ref.current)return
     const draw=()=>{if(ref.current)drawThumb(slide,idx,total,theme,fs,ref.current,imgRef.current)}
-    if(slide.bgImage&&(!imgRef.current||imgRef.current.src!==slide.bgImage)){
-      const img=new Image(); img.crossOrigin='anonymous'
-      img.onload=()=>{imgRef.current=img;draw()}; img.onerror=()=>{imgRef.current=null;draw()}; img.src=slide.bgImage
-    }else draw()
+    const run=()=>{
+      if(slide.bgImage&&(!imgRef.current||imgRef.current.src!==slide.bgImage)){
+        const img=new Image(); img.crossOrigin='anonymous'
+        img.onload=()=>{imgRef.current=img;draw()}; img.onerror=()=>{imgRef.current=null;draw()}; img.src=slide.bgImage
+      }else draw()
+    }
+    if(document.fonts?.ready){document.fonts.ready.then(run)}else run()
   },[slide,theme,fs,idx,total])
   const H=Math.round(size*1350/1080)
   return <canvas ref={ref} width={size} height={H} onClick={onClick} style={{borderRadius:11,cursor:'pointer',display:'block',flexShrink:0,boxShadow:active?'0 0 0 3px #CC3333,0 0 0 6px rgba(204,51,51,0.25)':'0 0 0 1px rgba(255,255,255,0.07)',transform:active?'translateY(-3px)':'none',transition:'all .18s'}}/>
