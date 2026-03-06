@@ -119,7 +119,9 @@ async function renderSlide(slide:Slide,idx:number,total:number,theme:Theme,fontS
 }
 
 function drawThumb(slide:Slide,idx:number,total:number,theme:Theme,fs:number,canvas:HTMLCanvasElement,bgImg?:HTMLImageElement|null){
-  const W=canvas.width,H=canvas.height,t=T[theme],pfs=fs*(W/1080)
+  const W=canvas.width,H=canvas.height,t=T[theme]
+  // Use a higher scale factor so text is readable in thumbnails
+  const pfs=fs*(W/400)
   const ctx=canvas.getContext('2d')!
   if(bgImg&&slide.bgImage){ctx.drawImage(bgImg,0,0,W,H);ctx.fillStyle=`rgba(0,0,0,${slide.overlayOpacity??0.72})`;ctx.fillRect(0,0,W,H)}
   else{ctx.fillStyle=t.bg;ctx.fillRect(0,0,W,H)}
@@ -148,6 +150,16 @@ function drawThumb(slide:Slide,idx:number,total:number,theme:Theme,fs:number,can
       const sw=ctx.measureText(s.text).width; ctx.fillText(s.text,x,ly); x-=sw
     }
     ly+=lh
+  }
+  // Draw body text
+  if(slide.body){
+    const bs=Math.round(42*pfs); ctx.font=`500 ${bs}px ${F}`
+    ctx.fillStyle=slide.bgImage?'rgba(255,255,255,0.85)':t.sub; ctx.textAlign='right'; ctx.textBaseline='top'
+    const bw=slide.body.split(' '),bl:string[]=[]; let bc=''
+    for(const w of bw){const test=bc?bc+' '+w:w; if(ctx.measureText(test).width>mx&&bc){bl.push(bc);bc=w}else bc=test}
+    if(bc)bl.push(bc)
+    let by=ly+Math.round(18*pfs)
+    for(const b of bl.slice(0,4)){ctx.fillText(b,tr,by);by+=bs*1.6}
   }
 }
 
