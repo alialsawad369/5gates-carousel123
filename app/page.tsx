@@ -120,8 +120,8 @@ async function renderSlide(slide:Slide,idx:number,total:number,theme:Theme,fontS
 
 function drawThumb(slide:Slide,idx:number,total:number,theme:Theme,fs:number,canvas:HTMLCanvasElement,bgImg?:HTMLImageElement|null){
   const W=canvas.width,H=canvas.height,t=T[theme]
-  // Use a higher scale factor so text is readable in thumbnails
-  const pfs=fs*(W/400)
+  // Scale factor tuned for thumbnail readability
+  const pfs=fs*(W/700)
   const ctx=canvas.getContext('2d')!
   if(bgImg&&slide.bgImage){ctx.drawImage(bgImg,0,0,W,H);ctx.fillStyle=`rgba(0,0,0,${slide.overlayOpacity??0.72})`;ctx.fillRect(0,0,W,H)}
   else{ctx.fillStyle=t.bg;ctx.fillRect(0,0,W,H)}
