@@ -1,11 +1,15 @@
 'use client'
-import React, { useState, useEffect, useRef } from 'react' 
+import React, { useState, useEffect, useRef } from 'react'
 
 type TextAlign = 'top'|'middle'|'bottom'
 type Slide = { headline:string; body:string; handle:string; icon?:string; bgImage?:string; textAlign?:TextAlign; textX?:number; textY?:number; overlayOpacity?:number }
 type Theme = 'dark'|'darker'|'white'|'cream'|'darkred'|'charcoal'
 type PostStatus = 'scheduled'|'published'|'failed'|'draft'|'processing'
 type SavedCarousel = { name:string; slides:Slide[]; theme:Theme; fs:number; date:string; caption:string }
+
+// AI Chat types
+type ChatMsg = { role:'user'|'assistant'; content:string }
+type AiStep = 'input'|'chat'|'done'
 
 const T: Record<Theme,{bg:string;text:string;sub:string;brand:string;hl:string;label:string}> = {
   dark:     {bg:'#111111',text:'#F0EDE8',sub:'rgba(240,237,232,0.68)',brand:'rgba(240,237,232,0.35)',hl:'#CC3333',label:'Dark'},
@@ -120,7 +124,6 @@ async function renderSlide(slide:Slide,idx:number,total:number,theme:Theme,fontS
 
 function drawThumb(slide:Slide,idx:number,total:number,theme:Theme,fs:number,canvas:HTMLCanvasElement,bgImg?:HTMLImageElement|null){
   const W=canvas.width,H=canvas.height,t=T[theme]
-  // Scale factor tuned for thumbnail readability
   const pfs=fs*(W/700)
   const ctx=canvas.getContext('2d')!
   if(bgImg&&slide.bgImage){ctx.drawImage(bgImg,0,0,W,H);ctx.fillStyle=`rgba(0,0,0,${slide.overlayOpacity??0.72})`;ctx.fillRect(0,0,W,H)}
@@ -151,7 +154,6 @@ function drawThumb(slide:Slide,idx:number,total:number,theme:Theme,fs:number,can
     }
     ly+=lh
   }
-  // Draw body text
   if(slide.body){
     const bs=Math.round(42*pfs); ctx.font=`500 ${bs}px ${F}`
     ctx.fillStyle=slide.bgImage?'rgba(255,255,255,0.85)':t.sub; ctx.textAlign='right'; ctx.textBaseline='top'
@@ -186,6 +188,39 @@ function Badge({s}:{s:PostStatus}){
   return <span style={{fontSize:10,fontWeight:700,padding:'2px 9px',borderRadius:20,color:c,background:bg,border:`1px solid ${c}40`}}>{l}</span>
 }
 
+// Parse slides JSON from AI chat response
+function parseSlidesFromText(text:string): Slide[]|null {
+  try {
+    const match = text.match(/```json\s*([\s\S]+?)```/) || text.match(/(\[\s*\{[\s\S]+\}\s*\])/)
+    if(match) {
+      const parsed = JSON.parse(match[1])
+      if(Array.isArray(parsed) && parsed[0]?.headline) return parsed
+    }
+  } catch(_) {}
+  return null
+}
+
+// Render slide text preview card
+function SlidePreviewCard({slide, idx}: {slide: Slide, idx: number}) {
+  return (
+    <div style={{background:'#1E1E1E',border:'1px solid rgba(255,255,255,0.08)',borderRadius:12,padding:'12px 14px',marginBottom:8,direction:'rtl'}}>
+      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+        <span style={{background:'#CC3333',color:'#fff',fontSize:10,fontWeight:800,padding:'2px 8px',borderRadius:6,flexShrink:0}}>
+          {idx+1}
+        </span>
+        <span style={{fontSize:14,fontWeight:800,color:'#F0EDE8',lineHeight:1.5}}>
+          {slide.headline.replace(/\*+/g,'')}
+        </span>
+      </div>
+      {slide.body && (
+        <div style={{fontSize:12,color:'rgba(240,237,232,0.6)',lineHeight:1.7,paddingRight:32}}>
+          {slide.body}
+        </div>
+      )}
+    </div>
+  )
+}
+
 const inp:React.CSSProperties={width:'100%',background:'#1E1E1E',border:'1px solid rgba(255,255,255,0.12)',borderRadius:10,color:'#F0EDE8',fontFamily:"'Cairo',sans-serif",fontSize:13,padding:'10px 12px',outline:'none',direction:'rtl',WebkitAppearance:'none',appearance:'none',boxSizing:'border-box'}
 const btnR:React.CSSProperties={background:'#CC3333',color:'#fff',border:'none',borderRadius:10,fontFamily:"'Cairo',sans-serif",fontSize:13,fontWeight:800,padding:'10px 16px',cursor:'pointer',display:'inline-flex',alignItems:'center',gap:6,boxShadow:'0 3px 14px rgba(204,51,51,0.35)',WebkitTapHighlightColor:'transparent',flexShrink:0}
 const btnD:React.CSSProperties={background:'#2A2A2A',color:'#888',border:'1px solid rgba(255,255,255,0.1)',borderRadius:10,fontFamily:"'Cairo',sans-serif",fontSize:13,fontWeight:700,padding:'9px 13px',cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5,WebkitTapHighlightColor:'transparent',flexShrink:0}
@@ -204,10 +239,7 @@ export default function App(){
   const [eHead,setEHead]=useState(''); const [eBody,setEBody]=useState(''); const [eHandle,setEHandle]=useState('@5gates.bh')
   const [caption,setCaption]=useState(''); const [schedDate,setSchedDate]=useState(''); const [schedTime,setSchedTime]=useState('09:00')
   const [uploading,setUploading]=useState(false); const [schedMsg,setSchedMsg]=useState('')
-  const [aiOpen,setAiOpen]=useState(false); const [aiPrompt,setAiPrompt]=useState('')
-  const [aiNum,setAiNum]=useState('5'); const [aiLang,setAiLang]=useState('ar')
-  const [aiType,setAiType]=useState('hook'); const [aiTone,setAiTone]=useState('bold')
-  const [genning,setGenning]=useState(false)
+  const [aiOpen,setAiOpen]=useState(false)
   const [tab,setTab]=useState<'builder'|'saved'|'queue'|'settings'>('builder')
   const [posts,setPosts]=useState<any[]>([]); const [loadingQ,setLoadingQ]=useState(false)
   const [igToken,setIgToken]=useState(''); const [igId,setIgId]=useState('')
@@ -216,6 +248,23 @@ export default function App(){
   const [saved,setSaved]=useState<SavedCarousel[]>([])
   const [saveOpen,setSaveOpen]=useState(false); const [saveName,setSaveName]=useState('')
   const [mPanel,setMPanel]=useState<'slides'|'preview'|'design'>('preview')
+
+  // AI Chat state
+  const [aiStep,setAiStep]=useState<AiStep>('input')
+  const [aiPrompt,setAiPrompt]=useState('')
+  const [aiNum,setAiNum]=useState('5')
+  const [aiLang,setAiLang]=useState('ar')
+  const [aiType,setAiType]=useState('hook')
+  const [aiTone,setAiTone]=useState('bold')
+  const [aiInputMode,setAiInputMode]=useState<'topic'|'manual'>('topic')
+  const [aiPostMode,setAiPostMode]=useState<'post'|'carousel'>('carousel')
+  const [aiManualText,setAiManualText]=useState('')
+  const [chatMsgs,setChatMsgs]=useState<ChatMsg[]>([])
+  const [chatInput,setChatInput]=useState('')
+  const [chatLoading,setChatLoading]=useState(false)
+  const [previewSlides,setPreviewSlides]=useState<Slide[]>([])
+  const [confirming,setConfirming]=useState(false)
+  const chatBottomRef=useRef<HTMLDivElement>(null)
 
   const showToast=(m:string)=>{setToast(m);setTimeout(()=>setToast(''),3200)}
 
@@ -231,24 +280,152 @@ export default function App(){
     setSlides(p=>{const n=[...p];n[active]={...n[active],headline:eHead,body:eBody,handle:eHandle};return n})
   },[eHead,eBody,eHandle])
 
+  useEffect(()=>{
+    if(chatBottomRef.current) chatBottomRef.current.scrollIntoView({behavior:'smooth'})
+  },[chatMsgs,chatLoading])
+
   const upd=(field:Partial<Slide>)=>setSlides(p=>{const n=[...p];n[active]={...n[active],...field};return n})
+
+  function resetAiModal(){
+    setAiStep('input'); setAiPrompt(''); setAiManualText(''); setChatMsgs([]); setChatInput(''); setPreviewSlides([]); setConfirming(false); setAiPostMode('carousel')
+  }
+
+  function openAi(){setAiOpen(true); resetAiModal()}
+  function closeAi(){setAiOpen(false); resetAiModal()}
 
   async function login(){
     const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})})
     if(r.ok)setAuthed(true); else setPwErr('كلمة المرور غير صحيحة')
   }
 
-  async function generate(){
-    if(!aiPrompt.trim()){showToast('أدخل موضوعاً');return}
-    setGenning(true)
+  // Step 1: Generate initial carousel suggestion via existing /api/generate
+  async function startGeneration(){
+    const topic = aiInputMode==='topic' ? aiPrompt.trim() : aiManualText.trim()
+    if(!topic){showToast('أدخل موضوعاً أو نصاً');return}
+    setChatLoading(true)
+    setAiStep('chat')
+
+    const userMsg: ChatMsg = {
+      role:'user',
+      content: aiInputMode==='topic'
+        ? `الموضوع: ${topic}`
+        : `النص المدخل:\n${topic}`
+    }
+    setChatMsgs([userMsg])
+
     try{
-      const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:aiPrompt,numSlides:+aiNum,lang:aiLang,type:aiType,tone:aiTone})})
+      const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:topic,numSlides:aiPostMode==='post'?1:+aiNum,lang:aiLang,type:aiType,tone:aiTone})})
       const d=await r.json(); if(d.error)throw new Error(d.error)
-      setSlides(d.slides.map((s:any)=>({...s,textAlign:'middle',overlayOpacity:0.72})))
-      setActive(0);setAiOpen(false);setMPanel('preview')
-      showToast(`✦ تم توليد ${d.slides.length} شرائح`)
-    }catch(e:any){showToast('خطأ: '+e.message)}
-    finally{setGenning(false)}
+      const generatedSlides: Slide[] = d.slides.map((s:any)=>({...s,textAlign:'middle',overlayOpacity:0.72}))
+      setPreviewSlides(generatedSlides)
+
+      // Build readable text preview
+      const previewText = generatedSlides.map((sl,i)=>
+        `**شريحة ${i+1}:** ${sl.headline.replace(/\*+/g,'')}\n${sl.body||''}`
+      ).join('\n\n')
+
+      const assistantMsg: ChatMsg = {
+        role:'assistant',
+        content: `✦ ${aiPostMode==='post'?'هذا مقترح البوست':'هذه مقترحات الكاروسيل'} (${generatedSlides.length} ${generatedSlides.length===1?'شريحة':'شرائح'}):\n\n${previewText}\n\n---\nقل لي أي تعديل تريد، أو اكتب **"تأكيد"** لتحويله ${aiPostMode==='post'?'لبوست بصري':'لكاروسيل بصري'}.`
+      }
+      setChatMsgs([userMsg, assistantMsg])
+    }catch(e:any){
+      setChatMsgs(prev=>[...prev,{role:'assistant',content:`خطأ: ${e.message}`}])
+      setAiStep('input')
+    }finally{
+      setChatLoading(false)
+    }
+  }
+
+  // Chat refinement — detect "تأكيد" or send refinement to Claude
+  async function sendChat(){
+    const msg=chatInput.trim()
+    if(!msg)return
+    setChatInput('')
+
+    const isConfirm = /^تأكيد$|^confirm$|^تأكيد\s*$/i.test(msg)
+
+    if(isConfirm){
+      // Confirm — apply current previewSlides to the builder
+      setConfirming(true)
+      setSlides(previewSlides)
+      setActive(0)
+      setAiOpen(false)
+      resetAiModal()
+      setMPanel('preview')
+      showToast(`✦ تم توليد ${previewSlides.length} شرائح`)
+      setConfirming(false)
+      return
+    }
+
+    const newMsgs: ChatMsg[] = [...chatMsgs, {role:'user',content:msg}]
+    setChatMsgs(newMsgs)
+    setChatLoading(true)
+
+    try{
+      // Build system prompt with current slides as context
+      const currentSlidesJson = JSON.stringify(previewSlides.map(s=>({headline:s.headline,body:s.body})))
+      const systemPrompt = `أنت مساعد متخصص في إنشاء محتوى كاروسيل للسوشيال ميديا باللغة ${aiLang==='ar'?'العربية':'الإنجليزية'} لشركة 5GATES للاستشارات المحاسبية في البحرين.
+
+الشرائح الحالية:
+${currentSlidesJson}
+
+المستخدم سيطلب تعديلات. قم بتطبيقها وأعد إرسال الشرائح المحدّثة بالتنسيق التالي:
+
+\`\`\`json
+[{"headline":"...","body":"..."},...]
+\`\`\`
+
+ثم بعد الـ JSON أضف ملخصاً قصيراً بالعربية لما تم تعديله.
+اكتب "تأكيد" للمستخدم إذا أراد التأكيد.`
+
+      const r=await fetch('/api/chat',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          system: systemPrompt,
+          messages: newMsgs.map(m=>({role:m.role,content:m.content}))
+        })
+      })
+
+      let aiReply = ''
+      if(r.ok){
+        const d=await r.json()
+        aiReply = d.reply || d.content || d.message || ''
+      } else {
+        // Fallback: use /api/generate with modified prompt
+        const modPrompt = `${msg}. المحتوى الحالي: ${previewSlides.map(s=>s.headline).join('، ')}`
+        const gr=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:modPrompt,numSlides:previewSlides.length,lang:aiLang,type:aiType,tone:aiTone})})
+        const gd=await gr.json()
+        if(!gd.error && gd.slides){
+          const updatedSlides: Slide[] = gd.slides.map((s:any)=>({...s,textAlign:'middle',overlayOpacity:0.72}))
+          setPreviewSlides(updatedSlides)
+          const previewText = updatedSlides.map((sl,i)=>
+            `**شريحة ${i+1}:** ${sl.headline.replace(/\*+/g,'')}\n${sl.body||''}`
+          ).join('\n\n')
+          aiReply = `✦ تم التعديل:\n\n${previewText}\n\n---\nاكتب **"تأكيد"** للمتابعة أو أخبرني بأي تعديل آخر.`
+        }
+      }
+
+      // Try to parse updated slides from reply
+      const parsed = parseSlidesFromText(aiReply)
+      if(parsed){
+        const updSlides = parsed.map(s=>({...s,textAlign:'middle' as TextAlign,overlayOpacity:0.72,handle:'@5gates.bh'}))
+        setPreviewSlides(updSlides)
+        // Clean up JSON from display message
+        const cleanReply = aiReply.replace(/```json[\s\S]+?```/g,'').trim()
+        const previewText = updSlides.map((sl,i)=>
+          `**شريحة ${i+1}:** ${sl.headline.replace(/\*+/g,'')}\n${sl.body||''}`
+        ).join('\n\n')
+        setChatMsgs([...newMsgs,{role:'assistant',content:`✦ تم التعديل:\n\n${previewText}\n\n---\n${cleanReply}\n\nاكتب **"تأكيد"** للمتابعة.`}])
+      } else {
+        setChatMsgs([...newMsgs,{role:'assistant',content:aiReply||'تم التعديل. اكتب **"تأكيد"** للمتابعة أو أخبرني بأي تعديل آخر.'}])
+      }
+    }catch(e:any){
+      setChatMsgs([...newMsgs,{role:'assistant',content:`خطأ: ${e.message}`}])
+    }finally{
+      setChatLoading(false)
+    }
   }
 
   async function renderAll():Promise<string[]>{
@@ -339,7 +516,7 @@ export default function App(){
           <span style={{fontFamily:"'Tajawal',sans-serif",fontWeight:900,fontSize:15}}>5GATES</span>
         </div>
         {tab==='builder'&&<>
-          <button onClick={()=>setAiOpen(true)} style={{...btnR,padding:'8px 13px',fontSize:12}}>✦ AI</button>
+          <button onClick={openAi} style={{...btnR,padding:'8px 13px',fontSize:12}}>✦ AI</button>
           {slides.length>0&&<>
             <button onClick={downloadSlides} style={{...btnD,padding:'8px 11px',fontSize:15,minWidth:38,justifyContent:'center'}}>⬇️</button>
             <button onClick={()=>setSaveOpen(true)} style={{...btnD,padding:'8px 11px',fontSize:15,minWidth:38,justifyContent:'center'}}>💾</button>
@@ -380,7 +557,7 @@ export default function App(){
                   </button>
                   <div style={{marginTop:14,marginBottom:7,fontSize:9,fontWeight:800,letterSpacing:2,color:'#333',textTransform:'uppercase'}}>مواضيع سريعة</div>
                   {['أخطاء التدفق النقدي','ضريبة القيمة المضافة','نصائح ERP','تقييم الأعمال','المحاسبة الشهرية','نمو المشاريع الصغيرة'].map(tp=>(
-                    <div key={tp} onClick={()=>{setAiPrompt(tp);setAiOpen(true)}} style={{background:'#1E1E1E',border:'1px solid rgba(255,255,255,0.06)',borderRadius:8,padding:'7px 8px',fontSize:12,fontWeight:700,color:'#444',cursor:'pointer',marginBottom:5,textAlign:'center'}}>{tp}</div>
+                    <div key={tp} onClick={()=>{setAiPrompt(tp);openAi()}} style={{background:'#1E1E1E',border:'1px solid rgba(255,255,255,0.06)',borderRadius:8,padding:'7px 8px',fontSize:12,fontWeight:700,color:'#444',cursor:'pointer',marginBottom:5,textAlign:'center'}}>{tp}</div>
                   ))}
                 </div>
               </div>
@@ -398,7 +575,7 @@ export default function App(){
                     <div style={{textAlign:'center',color:'#444',padding:20}}>
                       <div style={{fontSize:52,marginBottom:12}}>✦</div>
                       <div style={{fontSize:15,color:'#555',fontWeight:800,marginBottom:16}}>ابدأ الكاروسيل</div>
-                      <button onClick={()=>setAiOpen(true)} style={btnR}>✦ توليد AI</button>
+                      <button onClick={openAi} style={btnR}>✦ توليد AI</button>
                     </div>
                   ):slides.map((sl,i)=>(
                     <SlideThumb key={i+'-'+theme+'-'+fs+'-'+(sl.icon||'')+'-'+(sl.bgImage||'')+'-'+(sl.textAlign||'')+'-'+(sl.textX||0)+'-'+(sl.textY||0)}
@@ -550,7 +727,7 @@ export default function App(){
                   const pS:Slide[]=JSON.parse(post.slides_json); const imgs:string[]=post.image_urls?JSON.parse(post.image_urls):[]
                   return(
                     <div key={post.id} style={{background:'#1A1A1A',border:'1px solid rgba(255,255,255,0.07)',borderRadius:14,padding:14}}>
-                      <div style={{display:'flex',gap:7,marginBottom:10}}>{imgs.slice(0,5).map((u,i)=><img key={i} src={u} alt="" style={{width:46,height:57,borderRadius:7,objectFit:'cover',border:'1px solid rgba(255,255,255,0.06)'}}/>)}</div>
+                      <div style={{display:'flex',gap:7,marginBottom:10}}>{imgs.slice(0,5).map((u:string,i:number)=><img key={i} src={u} alt="" style={{width:46,height:57,borderRadius:7,objectFit:'cover',border:'1px solid rgba(255,255,255,0.06)'}}/>)}</div>
                       <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:5,flexWrap:'wrap'}}><Badge s={post.status}/><span style={{fontSize:11,color:'#333'}}>#{post.id}</span>{post.ig_media_id&&<span style={{fontSize:10,color:'#55DD88'}}>✓ منشور</span>}</div>
                       <div style={{fontSize:13,color:'#F0EDE8',direction:'rtl',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:5}}>{pS[0]?.headline.replace(/\*+/g,'')||'—'}</div>
                       <div style={{fontSize:11,color:'#444',marginBottom:8}}>📅 {new Date(post.scheduled_at).toLocaleString('ar-BH')}</div>
@@ -598,35 +775,168 @@ export default function App(){
         ))}
       </nav>
 
-      {/* AI MODAL */}
+      {/* ═══════════════════════════════════════
+          AI MODAL — 2-STEP: INPUT → CHAT
+      ═══════════════════════════════════════ */}
       {aiOpen&&(
-        <div onClick={e=>{if(e.target===e.currentTarget)setAiOpen(false)}} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',backdropFilter:'blur(16px)',zIndex:1000,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
-          <div style={{background:'#1A1A1A',border:'1px solid rgba(255,255,255,0.1)',borderTop:'3px solid #CC3333',borderRadius:'20px 20px 0 0',width:'100%',maxWidth:580,maxHeight:'92dvh',overflowY:'auto',padding:22}}>
-            <div style={{width:36,height:4,background:'rgba(255,255,255,0.15)',borderRadius:2,margin:'0 auto 16px'}}/>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
-              <div style={{fontFamily:"'Tajawal',sans-serif",fontWeight:900,fontSize:18}}>✦ توليد بالذكاء الاصطناعي</div>
-              <button onClick={()=>setAiOpen(false)} style={{...btnD,width:34,height:34,padding:0,justifyContent:'center'}}>✕</button>
+        <div onClick={e=>{if(e.target===e.currentTarget)closeAi()}} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.88)',backdropFilter:'blur(18px)',zIndex:1000,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
+          <div style={{background:'#1A1A1A',border:'1px solid rgba(255,255,255,0.1)',borderTop:'3px solid #CC3333',borderRadius:'20px 20px 0 0',width:'100%',maxWidth:600,maxHeight:'94dvh',display:'flex',flexDirection:'column'}}>
+
+            {/* Modal Header */}
+            <div style={{padding:'16px 20px 12px',flexShrink:0}}>
+              <div style={{width:36,height:4,background:'rgba(255,255,255,0.15)',borderRadius:2,margin:'0 auto 14px'}}/>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                <div style={{display:'flex',alignItems:'center',gap:10}}>
+                  {aiStep==='chat'&&(
+                    <button onClick={()=>setAiStep('input')} style={{...btnD,width:30,height:30,padding:0,justifyContent:'center',fontSize:14}}>←</button>
+                  )}
+                  <div style={{fontFamily:"'Tajawal',sans-serif",fontWeight:900,fontSize:17}}>
+                    {aiStep==='input'?'✦ توليد بالذكاء الاصطناعي':'💬 راجع وعدّل المحتوى'}
+                  </div>
+                </div>
+                <button onClick={closeAi} style={{...btnD,width:32,height:32,padding:0,justifyContent:'center'}}>✕</button>
+              </div>
+              {/* Post / Carousel toggle — only show on input step */}
+              {aiStep==='input'&&(
+                <div style={{display:'flex',gap:0,marginTop:14,background:'#111',borderRadius:10,padding:3}}>
+                  {(['post','carousel'] as const).map(m=>(
+                    <button key={m} onClick={()=>setAiPostMode(m)} style={{flex:1,padding:'9px',background:aiPostMode===m?'#CC3333':'transparent',border:'none',borderRadius:8,color:aiPostMode===m?'#fff':'#444',fontFamily:"'Cairo',sans-serif",fontSize:13,fontWeight:800,cursor:'pointer',transition:'all .15s',WebkitTapHighlightColor:'transparent'}}>
+                      {m==='post'?'📸 بوست واحد':'🎠 كاروسيل'}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {aiStep==='chat'&&(
+                <div style={{marginTop:8,fontSize:11,color:'#555',direction:'rtl'}}>
+                  اكتب تعديلاتك بالعربي ← AI يعدّل المحتوى ← اكتب <span style={{color:'#CC3333',fontWeight:800}}>تأكيد</span> للتحويل {aiPostMode==='post'?'لبوست بصري':'لكاروسيل بصري'}
+                </div>
+              )}
             </div>
-            <textarea value={aiPrompt} onChange={e=>setAiPrompt(e.target.value)} rows={3} style={{...inp,fontSize:14,resize:'none',lineHeight:1.8,marginBottom:10}} placeholder="مثال: أهم أخطاء تدمر التدفق النقدي..."/>
-            <div style={{display:'flex',flexWrap:'wrap',gap:5,marginBottom:14}}>
-              {['أهم ٥ أخطاء في التدفق النقدي','لماذا تفشل الشركات في المحاسبة','كيف تعرف أن شركتك تحتاج ERP'].map(p=>(
-                <div key={p} onClick={()=>setAiPrompt(p)} style={{background:'#222',border:'1px solid rgba(255,255,255,0.08)',borderRadius:20,padding:'5px 12px',fontSize:11,color:'#555',cursor:'pointer',fontFamily:"'Cairo',sans-serif"}}>{p.slice(0,22)}…</div>
-              ))}
-            </div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
-              <div><div style={{fontSize:10,color:'#444',marginBottom:4}}>الشرائح</div><select value={aiNum} onChange={e=>setAiNum(e.target.value)} style={inp}>{[['4','٤'],['5','٥'],['6','٦'],['7','٧']].map(([v,l])=><option key={v} value={v}>{l} شرائح</option>)}</select></div>
-              <div><div style={{fontSize:10,color:'#444',marginBottom:4}}>اللغة</div><select value={aiLang} onChange={e=>setAiLang(e.target.value)} style={inp}><option value="ar">🇸🇦 عربي</option><option value="en">🇬🇧 English</option></select></div>
-            </div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:18}}>
-              <div><div style={{fontSize:10,color:'#444',marginBottom:4}}>النوع</div><select value={aiType} onChange={e=>setAiType(e.target.value)} style={inp}>{[['hook','🔥 هوك'],['tips','💡 نصائح'],['warning','⚠️ تحذيرات'],['facts','📊 حقائق'],['steps','📋 خطوات'],['contrast','⚡ مقارنة'],['myths','❌ خرافات']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
-              <div><div style={{fontSize:10,color:'#444',marginBottom:4}}>الأسلوب</div><select value={aiTone} onChange={e=>setAiTone(e.target.value)} style={inp}>{[['bold','🔥 جريء'],['direct','⚡ مباشر'],['question','❓ أسئلة'],['expert','🎩 خبير']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
-            </div>
-            <div style={{display:'flex',gap:10}}>
-              <button onClick={()=>setAiOpen(false)} style={{...btnD,flex:1,justifyContent:'center'}}>إلغاء</button>
-              <button onClick={generate} disabled={genning} style={{...btnR,flex:2,justifyContent:'center',opacity:genning?.6:1}}>
-                {genning?<><span style={{width:14,height:14,border:'2px solid rgba(255,255,255,0.2)',borderTopColor:'#fff',borderRadius:'50%',animation:'spin .6s linear infinite',display:'inline-block'}}/> جاري…</>:'✦ توليد'}
-              </button>
-            </div>
+
+            {/* ── STEP 1: INPUT ── */}
+            {aiStep==='input'&&(
+              <div style={{flex:1,overflowY:'auto',padding:'0 20px 20px'}}>
+                {/* Mode toggle */}
+                <div style={{display:'flex',gap:0,marginBottom:16,background:'#111',borderRadius:10,padding:3}}>
+                  {(['topic','manual'] as const).map(m=>(
+                    <button key={m} onClick={()=>setAiInputMode(m)} style={{flex:1,padding:'8px',background:aiInputMode===m?'#CC3333':'transparent',border:'none',borderRadius:8,color:aiInputMode===m?'#fff':'#444',fontFamily:"'Cairo',sans-serif",fontSize:12,fontWeight:700,cursor:'pointer',transition:'all .15s',WebkitTapHighlightColor:'transparent'}}>
+                      {m==='topic'?'🎯 موضوع':'✍️ نص يدوي'}
+                    </button>
+                  ))}
+                </div>
+
+                {aiInputMode==='topic'?(
+                  <>
+                    <textarea value={aiPrompt} onChange={e=>setAiPrompt(e.target.value)} rows={3} style={{...inp,fontSize:14,resize:'none',lineHeight:1.8,marginBottom:10}} placeholder="مثال: أهم أخطاء تدمر التدفق النقدي للشركات الصغيرة..."/>
+                    <div style={{display:'flex',flexWrap:'wrap',gap:5,marginBottom:14}}>
+                      {['أهم ٥ أخطاء في التدفق النقدي','لماذا تفشل الشركات في المحاسبة','كيف تعرف أن شركتك تحتاج ERP'].map(p=>(
+                        <div key={p} onClick={()=>setAiPrompt(p)} style={{background:'#222',border:'1px solid rgba(255,255,255,0.08)',borderRadius:20,padding:'5px 12px',fontSize:11,color:'#555',cursor:'pointer',fontFamily:"'Cairo',sans-serif"}}>{p.slice(0,22)}…</div>
+                      ))}
+                    </div>
+                  </>
+                ):(
+                  <textarea value={aiManualText} onChange={e=>setAiManualText(e.target.value)} rows={6} style={{...inp,fontSize:13,resize:'none',lineHeight:1.8,marginBottom:14}} placeholder="الصق نصك هنا، AI سيحوّله لشرائح منسّقة..."/>
+                )}
+
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
+                  {aiPostMode==='carousel'
+                    ?<div><div style={{fontSize:10,color:'#444',marginBottom:4}}>الشرائح</div><select value={aiNum} onChange={e=>setAiNum(e.target.value)} style={inp}>{[['4','٤'],['5','٥'],['6','٦'],['7','٧']].map(([v,l])=><option key={v} value={v}>{l} شرائح</option>)}</select></div>
+                    :<div><div style={{fontSize:10,color:'#444',marginBottom:4}}>الشرائح</div><div style={{...inp,color:'#CC3333',fontWeight:800,fontSize:12,display:'flex',alignItems:'center',gap:6}}>📸 شريحة واحدة</div></div>
+                  }
+                  <div><div style={{fontSize:10,color:'#444',marginBottom:4}}>اللغة</div><select value={aiLang} onChange={e=>setAiLang(e.target.value)} style={inp}><option value="ar">🇸🇦 عربي</option><option value="en">🇬🇧 English</option></select></div>
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:20}}>
+                  <div><div style={{fontSize:10,color:'#444',marginBottom:4}}>النوع</div><select value={aiType} onChange={e=>setAiType(e.target.value)} style={inp}>{[['hook','🔥 هوك'],['tips','💡 نصائح'],['warning','⚠️ تحذيرات'],['facts','📊 حقائق'],['steps','📋 خطوات'],['contrast','⚡ مقارنة'],['myths','❌ خرافات']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
+                  <div><div style={{fontSize:10,color:'#444',marginBottom:4}}>الأسلوب</div><select value={aiTone} onChange={e=>setAiTone(e.target.value)} style={inp}>{[['bold','🔥 جريء'],['direct','⚡ مباشر'],['question','❓ أسئلة'],['expert','🎩 خبير']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
+                </div>
+
+                <div style={{display:'flex',gap:10}}>
+                  <button onClick={closeAi} style={{...btnD,flex:1,justifyContent:'center'}}>إلغاء</button>
+                  <button onClick={startGeneration} disabled={chatLoading} style={{...btnR,flex:2,justifyContent:'center',opacity:chatLoading?.6:1}}>
+                    {chatLoading
+                      ?<><span style={{width:14,height:14,border:'2px solid rgba(255,255,255,0.2)',borderTopColor:'#fff',borderRadius:'50%',animation:'spin .6s linear infinite',display:'inline-block'}}/> يولّد…</>
+                      :'✦ عرض المقترح'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ── STEP 2: CHAT ── */}
+            {aiStep==='chat'&&(
+              <>
+                {/* Chat messages + slide previews */}
+                <div style={{flex:1,overflowY:'auto',padding:'0 16px'}}>
+                  {chatMsgs.map((msg,i)=>(
+                    <div key={i} style={{marginBottom:14,direction:'rtl'}}>
+                      {msg.role==='user'?(
+                        <div style={{display:'flex',justifyContent:'flex-start',gap:8}}>
+                          <div style={{background:'rgba(204,51,51,0.15)',border:'1px solid rgba(204,51,51,0.3)',borderRadius:'12px 12px 4px 12px',padding:'9px 13px',maxWidth:'85%',fontSize:13,color:'#F0EDE8',lineHeight:1.7,direction:'rtl'}}>{msg.content}</div>
+                        </div>
+                      ):(
+                        <div style={{marginBottom:4}}>
+                          <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:8}}>
+                            <div style={{width:22,height:22,background:'#CC3333',borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:900,color:'#fff',flexShrink:0}}>5G</div>
+                            <span style={{fontSize:10,color:'#CC3333',fontWeight:800}}>5GATES AI</span>
+                          </div>
+                          {/* Show slide preview cards for first assistant message and after updates */}
+                          {previewSlides.length>0 && (i===1||(i===chatMsgs.length-1&&msg.role==='assistant')) && (
+                            <div style={{marginBottom:10}}>
+                              {previewSlides.map((sl,si)=>(
+                                <SlidePreviewCard key={si} slide={sl} idx={si}/>
+                              ))}
+                            </div>
+                          )}
+                          {/* Show the text part of assistant message (excluding slide content lines) */}
+                          <div style={{background:'#222',border:'1px solid rgba(255,255,255,0.07)',borderRadius:'4px 12px 12px 12px',padding:'9px 13px',fontSize:12,color:'rgba(240,237,232,0.7)',lineHeight:1.8,direction:'rtl',whiteSpace:'pre-wrap'}}>
+                            {/* Show only the last part after --- divider */}
+                            {msg.content.includes('---')
+                              ? msg.content.split('---').slice(-1)[0].trim()
+                              : msg.content.replace(/\*\*شريحة \d+:\*\*.+\n?.*/g,'').trim()
+                            }
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  {chatLoading&&(
+                    <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 0',direction:'rtl'}}>
+                      <div style={{width:22,height:22,background:'#CC3333',borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:900,color:'#fff',flexShrink:0}}>5G</div>
+                      <div style={{display:'flex',gap:4}}>
+                        {[0,1,2].map(d=>(
+                          <div key={d} style={{width:7,height:7,background:'#CC3333',borderRadius:'50%',animation:`bounce .9s ${d*0.2}s ease-in-out infinite`}}/>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div ref={chatBottomRef}/>
+                </div>
+
+                {/* Chat input + confirm */}
+                <div style={{padding:'12px 16px 16px',borderTop:'1px solid rgba(255,255,255,0.07)',flexShrink:0}}>
+                  <div style={{display:'flex',gap:8,marginBottom:10}}>
+                    <input
+                      value={chatInput}
+                      onChange={e=>setChatInput(e.target.value)}
+                      onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&!chatLoading&&sendChat()}
+                      placeholder="اطلب تعديلاً... (مثال: اختصر الشريحة 3، غيّر النبرة)"
+                      style={{...inp,flex:1,fontSize:13}}
+                      disabled={chatLoading}
+                    />
+                    <button onClick={sendChat} disabled={chatLoading||!chatInput.trim()} style={{...btnD,width:40,height:40,padding:0,justifyContent:'center',fontSize:18,opacity:(chatLoading||!chatInput.trim())?.4:1}}>↑</button>
+                  </div>
+                  <button
+                    onClick={()=>{setChatInput('تأكيد');setTimeout(sendChat,50)}}
+                    disabled={confirming||previewSlides.length===0}
+                    style={{...btnR,width:'100%',justifyContent:'center',fontSize:14,padding:'13px',opacity:confirming?.6:1,background:'linear-gradient(135deg,#CC3333,#FF4444)',boxShadow:'0 4px 20px rgba(204,51,51,0.45)'}}
+                  >
+                    {confirming
+                      ?<><span style={{width:14,height:14,border:'2px solid rgba(255,255,255,0.3)',borderTopColor:'#fff',borderRadius:'50%',animation:'spin .6s linear infinite',display:'inline-block'}}/> جاري التحويل…</>
+                      :'✦ تأكيد — تحويل '+(aiPostMode==='post'?'لبوست بصري':'لكاروسيل بصري')}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -651,6 +961,7 @@ export default function App(){
       <style>{`
         *{box-sizing:border-box}
         @keyframes spin{to{transform:rotate(360deg)}}
+        @keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-6px)}}
         ::-webkit-scrollbar{width:3px;height:3px}
         ::-webkit-scrollbar-thumb{background:#2A2A2A;border-radius:2px}
         @media(min-width:768px){.m-tabs{display:none!important}.m-only{display:none!important}.pnl{display:flex!important}}
