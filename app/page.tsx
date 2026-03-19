@@ -1,5 +1,5 @@
 'use client'
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react' 
 
 type TextAlign = 'top'|'middle'|'bottom'
 type Slide = { headline:string; body:string; handle:string; icon?:string; bgImage?:string; textAlign?:TextAlign; textX?:number; textY?:number; overlayOpacity?:number }
