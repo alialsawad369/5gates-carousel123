@@ -1,40 +1,20 @@
 'use client'
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 
 type TextAlign = 'top'|'middle'|'bottom'
-type Slide = { headline:string; body:string; handle:string; icon?:string; bgImage?:string; textAlign?:TextAlign; textX?:number; textY?:number; overlayOpacity?:number }
+type Slide = {
+  headline:string; body:string; handle:string; icon?:string; bgImage?:string;
+  textAlign?:TextAlign; textX?:number; textY?:number; overlayOpacity?:number;
+  headX?:number; headY?:number; bodyX?:number; bodyY?:number;
+  uploadedBg?:string; // base64 user-uploaded image
+  mode?:'carousel'|'story'; // story = 9:16
+}
 type Theme = 'dark'|'darker'|'white'|'cream'|'darkred'|'charcoal'
 type PostStatus = 'scheduled'|'published'|'failed'|'draft'|'processing'
 type SavedCarousel = { name:string; slides:Slide[]; theme:Theme; fs:number; date:string; caption:string }
 
-// AI Chat types
 type ChatMsg = { role:'user'|'assistant'; content:string }
 type AiStep = 'input'|'chat'|'done'
-
-// CHANGE 3: default handle
-const DEFAULT_HANDLE = '@Fivegates.bh'
-
-// CHANGE 1: fix leading punctuation
-function fixPunctuation(text: string): string {
-  if (!text) return text
-  const match = text.match(/^([.،؟!,?؛;:\-]+)\s*/)
-  if (!match) return text
-  const punct = match[1][0]
-  const body = text.slice(match[0].length).trim()
-  if (!body) return text
-  if (/[.،؟!,?؛;]$/.test(body)) return body
-  return body + punct
-}
-function cleanSlide(s: any): Slide {
-  return { ...s, headline: fixPunctuation(s.headline||''), body: fixPunctuation(s.body||'') }
-}
-
-// CHANGE 7: detect English vs Arabic for LTR layout
-function isEnglish(text: string): boolean {
-  const latin = (text.match(/[a-zA-Z]/g) || []).length
-  const arabic = (text.match(/[\u0600-\u06FF]/g) || []).length
-  return latin > arabic
-}
 
 const T: Record<Theme,{bg:string;text:string;sub:string;brand:string;hl:string;label:string}> = {
   dark:     {bg:'#111111',text:'#F0EDE8',sub:'rgba(240,237,232,0.68)',brand:'rgba(240,237,232,0.35)',hl:'#CC3333',label:'Dark'},
@@ -63,14 +43,14 @@ const BG_IMAGES = [
 function getIcon(h:string,icon?:string):string{
   if(icon&&ICONS[icon])return ICONS[icon]
   const l=h.toLowerCase()
-  if(l.includes('خطأ')||l.includes('تحذير')||l.includes('error')||l.includes('warning'))return ICONS.warning
-  if(l.includes('نمو')||l.includes('growth'))return ICONS.growth
-  if(l.includes('ضريبة')||l.includes('vat')||l.includes('tax'))return ICONS.tax
+  if(l.includes('خطأ')||l.includes('تحذير'))return ICONS.warning
+  if(l.includes('نمو'))return ICONS.growth
+  if(l.includes('ضريبة')||l.includes('vat'))return ICONS.tax
   if(l.includes('erp'))return ICONS.erp
-  if(l.includes('راتب')||l.includes('salary'))return ICONS.salary
-  if(l.includes('نقدي')||l.includes('مال')||l.includes('cash')||l.includes('money'))return ICONS.money
-  if(l.includes('نصيحة')||l.includes('tip'))return ICONS.bulb
-  if(l.includes('نجاح')||l.includes('success'))return ICONS.trophy
+  if(l.includes('راتب'))return ICONS.salary
+  if(l.includes('نقدي')||l.includes('مال'))return ICONS.money
+  if(l.includes('نصيحة'))return ICONS.bulb
+  if(l.includes('نجاح'))return ICONS.trophy
   return ICONS.chart
 }
 
@@ -88,139 +68,151 @@ function parseSegs(text:string):{text:string;color:string|null}[]{
   return segs
 }
 
+// Render slide to canvas - supports carousel (4:5) and story (9:16)
 async function renderSlide(slide:Slide,idx:number,total:number,theme:Theme,fontScale:number,W=1080,H=1350):Promise<string>{
-  const canvas=document.createElement('canvas'); canvas.width=W; canvas.height=H
+  const isStory = slide.mode==='story'
+  const CH = isStory ? Math.round(W * 16/9) : H
+  const canvas=document.createElement('canvas'); canvas.width=W; canvas.height=CH
   const ctx=canvas.getContext('2d')!; const t=T[theme],fs=fontScale
-  const isEn=isEnglish(slide.headline+' '+slide.body)
-  if(slide.bgImage){
+
+  const bgSrc = slide.uploadedBg || slide.bgImage
+  if(bgSrc){
     await new Promise<void>(res=>{
       const img=new Image(); img.crossOrigin='anonymous'
-      img.onload=()=>{ctx.drawImage(img,0,0,W,H);res()}
-      img.onerror=()=>{ctx.fillStyle=t.bg;ctx.fillRect(0,0,W,H);res()}
-      img.src=slide.bgImage!
+      img.onload=()=>{ctx.drawImage(img,0,0,W,CH);res()}
+      img.onerror=()=>{ctx.fillStyle=t.bg;ctx.fillRect(0,0,W,CH);res()}
+      img.src=bgSrc
     })
     const op=slide.overlayOpacity??0.72
-    ctx.fillStyle=`rgba(0,0,0,${op})`; ctx.fillRect(0,0,W,H)
-  }else{ ctx.fillStyle=t.bg; ctx.fillRect(0,0,W,H) }
-  const gr=ctx.createRadialGradient(W*1.1,-H*0.1,0,W*1.1,-H*0.1,W*0.9)
+    ctx.fillStyle=`rgba(0,0,0,${op})`; ctx.fillRect(0,0,W,CH)
+  }else{ ctx.fillStyle=t.bg; ctx.fillRect(0,0,W,CH) }
+
+  const gr=ctx.createRadialGradient(W*1.1,-CH*0.1,0,W*1.1,-CH*0.1,W*0.9)
   gr.addColorStop(0,theme==='darkred'?'rgba(204,51,51,0.5)':'rgba(204,51,51,0.25)')
-  gr.addColorStop(1,'transparent'); ctx.fillStyle=gr; ctx.fillRect(0,0,W,H)
-  ctx.fillStyle=t.hl; ctx.beginPath(); ctx.roundRect(isEn?80:W-195,H*0.845,115,7,4); ctx.fill()
+  gr.addColorStop(1,'transparent'); ctx.fillStyle=gr; ctx.fillRect(0,0,W,CH)
+  ctx.fillStyle=t.hl; ctx.beginPath(); ctx.roundRect(W-195,CH*0.845,115,7,4); ctx.fill()
+
+  // Force RTL direction on canvas context — fixes punctuation placement in Arabic
+  ctx.direction = 'rtl'
+
   const icon=getIcon(slide.headline,slide.icon)
-  ctx.font=`${Math.round(160*fs)}px serif`; ctx.globalAlpha=0.12
-  ctx.textAlign=isEn?'right':'left'; ctx.textBaseline='top'
-  ctx.fillText(icon,isEn?W-60:60,H*0.07); ctx.globalAlpha=1
-  ctx.font=`${Math.round(88*fs)}px serif`
-  ctx.textAlign=isEn?'left':'right'; ctx.textBaseline='top'
-  ctx.fillText(icon,isEn?75:W-75,72)
+  ctx.font=`${Math.round(160*fs)}px serif`; ctx.globalAlpha=0.12; ctx.textAlign='left'; ctx.textBaseline='top'; ctx.fillText(icon,60,CH*0.07); ctx.globalAlpha=1
+  ctx.font=`${Math.round(88*fs)}px serif`; ctx.textAlign='right'; ctx.textBaseline='top'; ctx.fillText(icon,W-75,72)
   ctx.font=`900 ${Math.round(30*fs)}px 'Tajawal','Cairo',sans-serif`
-  ctx.fillStyle=slide.bgImage?'rgba(255,255,255,0.5)':t.brand; ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText('FIVEGATES',W/2,65)
-  const txOff=(slide.textX??0)/100*W*0.3, tyOff=(slide.textY??0)/100*H*0.25
-  const vPos=slide.textAlign??'middle', baseY=vPos==='top'?H*0.18:vPos==='bottom'?H*0.55:H*0.28
-  const hs=Math.round(88*fs),lh=hs*1.32
-  const tAlign=isEn?'left':'right'
-  const tX=isEn?80+txOff:W-80+txOff
-  const mx=W-180
-  ctx.font=`900 ${hs}px 'Cairo',sans-serif`; ctx.textAlign=tAlign; ctx.textBaseline='top'
+  ctx.fillStyle=bgSrc?'rgba(255,255,255,0.5)':t.brand; ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText('5GATES',W/2,65)
+
+  // Headline position - use headX/headY if set, otherwise fall back to textX/textY
+  const hxOff = (slide.headX ?? slide.textX ?? 0)/100*W*0.3
+  const hyOff = (slide.headY ?? slide.textY ?? 0)/100*CH*0.25
+  const vPos=slide.textAlign??'middle'
+  const baseY = isStory
+    ? (vPos==='top'?CH*0.15:vPos==='bottom'?CH*0.60:CH*0.32)
+    : (vPos==='top'?CH*0.18:vPos==='bottom'?CH*0.55:CH*0.28)
+
+  const hs=Math.round(88*fs),lh=hs*1.32,tr=W-80+hxOff,mx=W-180
+  ctx.font=`900 ${hs}px 'Cairo',sans-serif`; ctx.textAlign='right'; ctx.textBaseline='top'
+  // Word-wrap: measure RTL words correctly by wrapping from right side
   const plain=slide.headline.replace(/\*+/g,''),words=plain.split(' '),lines:string[]=[]; let cur=''
   for(const w of words){const test=cur?cur+' '+w:w; if(ctx.measureText(test).width>mx&&cur){lines.push(cur);cur=w}else cur=test}
   if(cur)lines.push(cur)
-  let ly=baseY+tyOff-(lines.length*lh)/2
+  let ly=baseY+hyOff-(lines.length*lh)/2
   for(const line of lines){
-    if(isEn){
-      ctx.fillStyle=slide.bgImage?'#FFFFFF':t.text
-      ctx.fillText(line.trim().replace(/\*+/g,''),tX,ly)
-    } else {
-      const segs=parseSegs(line.trim()); let x=tX
-      for(let si=segs.length-1;si>=0;si--){
-        const s=segs[si]; ctx.font=`900 ${hs}px 'Cairo',sans-serif`
-        ctx.fillStyle=s.color||(slide.bgImage?'#FFFFFF':t.text)
-        const sw=ctx.measureText(s.text).width; ctx.fillText(s.text,x,ly); x-=sw
-      }
+    const segs=parseSegs(line.trim())
+    // With ctx.direction='rtl', we draw each segment by measuring width and positioning manually
+    // First pass: calculate total width of line to find start x
+    let totalW = 0
+    for(const s of segs){ ctx.font=`900 ${hs}px 'Cairo',sans-serif`; totalW += ctx.measureText(s.text).width }
+    let x = tr - totalW
+    for(const s of segs){
+      ctx.font=`900 ${hs}px 'Cairo',sans-serif`
+      ctx.fillStyle=s.color||(bgSrc?'#FFFFFF':t.text)
+      const sw=ctx.measureText(s.text).width
+      ctx.fillText(s.text,x,ly); x+=sw
     }
     ly+=lh
   }
-  // CHANGE 2: body with \n line breaks
+
   if(slide.body){
+    // Body position - use bodyX/bodyY if set
+    const bxOff = (slide.bodyX ?? slide.textX ?? 0)/100*W*0.3
+    const byOff = (slide.bodyY ?? slide.textY ?? 0)/100*CH*0.25
     const bs=Math.round(42*fs); ctx.font=`500 ${bs}px 'Cairo',sans-serif`
-    ctx.fillStyle=slide.bgImage?'rgba(255,255,255,0.85)':t.sub
-    ctx.textAlign=tAlign; ctx.textBaseline='top'
-    const bodyLines=slide.body.split('\n')
-    let by=ly+34+tyOff*0.2
-    for(const rawLine of bodyLines){
-      const bw=rawLine.split(' '),bl:string[]=[]; let bc=''
-      for(const w of bw){const test=bc?bc+' '+w:w; if(ctx.measureText(test).width>mx&&bc){bl.push(bc);bc=w}else bc=test}
-      if(bc)bl.push(bc)
-      for(const b of bl){ctx.fillText(b,tX,by);by+=bs*1.65}
-    }
+    ctx.fillStyle=bgSrc?'rgba(255,255,255,0.85)':t.sub; ctx.textAlign='right'; ctx.textBaseline='top'
+    const bw=slide.body.split(' '),bl:string[]=[]; let bc=''
+    for(const w of bw){const test=bc?bc+' '+w:w; if(ctx.measureText(test).width>mx&&bc){bl.push(bc);bc=w}else bc=test}
+    if(bc)bl.push(bc)
+    let by=ly+34+byOff*0.2
+    for(const b of bl.slice(0,4)){ctx.fillText(b,tr+bxOff-hxOff,by);by+=bs*1.65}
   }
-  const fy=H-110
-  ctx.font=`700 ${Math.round(26*fs)}px 'Cairo',sans-serif`; ctx.fillStyle=slide.bgImage?'rgba(255,255,255,0.4)':t.brand
-  ctx.textAlign=tAlign; ctx.textBaseline='middle'
-  ctx.fillText(slide.handle||DEFAULT_HANDLE,isEn?80:W-80,fy+22)
-  const dc=Math.min(total,7),dw=14,aw=44,dh=14,dg=8; let dx=(W-(dc*dw+(dc-1)*dg+(aw-dw)))/2
-  for(let d=0;d<dc;d++){
-    const w=d===idx?aw:dw; ctx.fillStyle=d===idx?t.hl:'rgba(255,255,255,0.2)'
-    ctx.beginPath(); ctx.roundRect(dx,fy+15,w,dh,dh/2); ctx.fill(); dx+=w+dg
+
+  const fy=CH-110
+  ctx.font=`700 ${Math.round(26*fs)}px 'Cairo',sans-serif`; ctx.fillStyle=bgSrc?'rgba(255,255,255,0.4)':t.brand
+  ctx.textAlign='right'; ctx.textBaseline='middle'; ctx.fillText(slide.handle||'@5gates.bh',W-80,fy+22)
+  if(!isStory){
+    const dc=Math.min(total,7),dw=14,aw=44,dh=14,dg=8; let dx=(W-(dc*dw+(dc-1)*dg+(aw-dw)))/2
+    for(let d=0;d<dc;d++){
+      const w=d===idx?aw:dw; ctx.fillStyle=d===idx?t.hl:'rgba(255,255,255,0.2)'
+      ctx.beginPath(); ctx.roundRect(dx,fy+15,w,dh,dh/2); ctx.fill(); dx+=w+dg
+    }
   }
   return canvas.toDataURL('image/jpeg',0.92)
 }
 
 function drawThumb(slide:Slide,idx:number,total:number,theme:Theme,fs:number,canvas:HTMLCanvasElement,bgImg?:HTMLImageElement|null){
-  const W=canvas.width,H=canvas.height,t=T[theme]
+  const isStory = slide.mode==='story'
+  const W=canvas.width, H=canvas.height, t=T[theme]
   const pfs=fs*(W/700)
   const ctx=canvas.getContext('2d')!
-  const isEn=isEnglish(slide.headline+' '+slide.body)
-  if(bgImg&&slide.bgImage){ctx.drawImage(bgImg,0,0,W,H);ctx.fillStyle=`rgba(0,0,0,${slide.overlayOpacity??0.72})`;ctx.fillRect(0,0,W,H)}
+  if((bgImg)&&(slide.bgImage||slide.uploadedBg)){ctx.drawImage(bgImg,0,0,W,H);ctx.fillStyle=`rgba(0,0,0,${slide.overlayOpacity??0.72})`;ctx.fillRect(0,0,W,H)}
   else{ctx.fillStyle=t.bg;ctx.fillRect(0,0,W,H)}
   const gr=ctx.createRadialGradient(W*1.1,-H*0.1,0,W*1.1,-H*0.1,W*0.9)
   gr.addColorStop(0,theme==='darkred'?'rgba(204,51,51,0.5)':'rgba(204,51,51,0.25)')
   gr.addColorStop(1,'transparent'); ctx.fillStyle=gr; ctx.fillRect(0,0,W,H)
-  ctx.fillStyle=t.hl; ctx.beginPath()
-  ctx.roundRect(isEn?80*W/1080:W-195*W/1080,H*0.845,115*W/1080,7*H/1350,4); ctx.fill()
-  ctx.font=`${Math.round(88*pfs)}px serif`
-  ctx.textAlign=isEn?'left':'right'; ctx.textBaseline='top'
-  ctx.fillText(getIcon(slide.headline,slide.icon),isEn?75*W/1080:W-75*W/1080,72*H/1350)
+  ctx.fillStyle=t.hl; ctx.beginPath(); ctx.roundRect(W-195*W/1080,H*0.845,115*W/1080,7*H/1350,4); ctx.fill()
+
+  // Force RTL direction on canvas context — fixes punctuation placement in Arabic
+  ctx.direction = 'rtl'
+
+  ctx.font=`${Math.round(88*pfs)}px serif`; ctx.textAlign='right'; ctx.textBaseline='top'
+  ctx.fillText(getIcon(slide.headline,slide.icon),W-75*W/1080,72*H/(isStory?1920:1350))
   const F="'Cairo','Tajawal',Arial,sans-serif"
   ctx.font=`900 ${Math.round(30*pfs)}px ${F}`
-  ctx.fillStyle=slide.bgImage?'rgba(255,255,255,0.5)':t.brand; ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText('FIVEGATES',W/2,65*H/1350)
-  const txOff=(slide.textX??0)/100*W*0.3,tyOff=(slide.textY??0)/100*H*0.25
-  const vPos=slide.textAlign??'middle',baseY=(vPos==='top'?H*0.18:vPos==='bottom'?H*0.55:H*0.28)
-  const hs=Math.round(88*pfs),lh=hs*1.32
-  const tAlign=isEn?'left':'right'
-  const tX=isEn?80*W/1080+txOff:W-80*W/1080+txOff
-  const mx=W-180*W/1080
-  ctx.font=`900 ${hs}px ${F}`; ctx.textAlign=tAlign; ctx.textBaseline='top'
+  ctx.fillStyle=(slide.bgImage||slide.uploadedBg)?'rgba(255,255,255,0.5)':t.brand; ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText('5GATES',W/2,65*H/(isStory?1920:1350))
+  const hxOff=(slide.headX??slide.textX??0)/100*W*0.3
+  const hyOff=(slide.headY??slide.textY??0)/100*H*0.25
+  const vPos=slide.textAlign??'middle'
+  const baseY = isStory
+    ? (vPos==='top'?H*0.15:vPos==='bottom'?H*0.60:H*0.32)
+    : (vPos==='top'?H*0.18:vPos==='bottom'?H*0.55:H*0.28)
+  const hs=Math.round(88*pfs),lh=hs*1.32,tr=W-80*W/1080+hxOff,mx=W-180*W/1080
+  ctx.font=`900 ${hs}px ${F}`; ctx.textAlign='right'; ctx.textBaseline='top'
   const plain=slide.headline.replace(/\*+/g,''),words=plain.split(' '),lines:string[]=[]; let cur=''
   for(const w of words){const test=cur?cur+' '+w:w; if(ctx.measureText(test).width>mx&&cur){lines.push(cur);cur=w}else cur=test}
   if(cur)lines.push(cur)
-  let ly=baseY+tyOff-(lines.length*lh)/2
+  let ly=baseY+hyOff-(lines.length*lh)/2
   for(const line of lines){
-    if(isEn){
-      ctx.fillStyle=slide.bgImage?'#FFFFFF':t.text
-      ctx.fillText(line.trim().replace(/\*+/g,''),tX,ly)
-    } else {
-      const segs=parseSegs(line.trim()); let x=tX
-      for(let si=segs.length-1;si>=0;si--){
-        const s=segs[si]; ctx.font=`900 ${hs}px ${F}`
-        ctx.fillStyle=s.color||(slide.bgImage?'#FFFFFF':t.text)
-        const sw=ctx.measureText(s.text).width; ctx.fillText(s.text,x,ly); x-=sw
-      }
+    const segs=parseSegs(line.trim())
+    let totalW = 0
+    for(const s of segs){ ctx.font=`900 ${hs}px ${F}`; totalW += ctx.measureText(s.text).width }
+    let x = tr - totalW
+    for(const s of segs){
+      ctx.font=`900 ${hs}px ${F}`
+      ctx.fillStyle=s.color||((slide.bgImage||slide.uploadedBg)?'#FFFFFF':t.text)
+      const sw=ctx.measureText(s.text).width
+      ctx.fillText(s.text,x,ly); x+=sw
     }
     ly+=lh
   }
   if(slide.body){
+    const bxOff=(slide.bodyX??slide.textX??0)/100*W*0.3
+    const byOff=(slide.bodyY??slide.textY??0)/100*H*0.25
     const bs=Math.round(42*pfs); ctx.font=`500 ${bs}px ${F}`
-    ctx.fillStyle=slide.bgImage?'rgba(255,255,255,0.85)':t.sub
-    ctx.textAlign=tAlign; ctx.textBaseline='top'
-    const bodyLines=slide.body.split('\n')
+    ctx.fillStyle=(slide.bgImage||slide.uploadedBg)?'rgba(255,255,255,0.85)':t.sub; ctx.textAlign='right'; ctx.textBaseline='top'
+    const bw=slide.body.split(' '),bl:string[]=[]; let bc=''
+    for(const w of bw){const test=bc?bc+' '+w:w; if(ctx.measureText(test).width>mx&&bc){bl.push(bc);bc=w}else bc=test}
+    if(bc)bl.push(bc)
     let by=ly+Math.round(18*pfs)
-    for(const rawLine of bodyLines){
-      const bw=rawLine.split(' '),bl:string[]=[]; let bc=''
-      for(const w of bw){const test=bc?bc+' '+w:w; if(ctx.measureText(test).width>mx&&bc){bl.push(bc);bc=w}else bc=test}
-      if(bc)bl.push(bc)
-      for(const b of bl.slice(0,4)){ctx.fillText(b,tX,by);by+=bs*1.6}
-    }
+    for(const b of bl.slice(0,4)){ctx.fillText(b,tr+bxOff-hxOff,by);by+=bs*1.6}
   }
 }
 
@@ -228,16 +220,21 @@ function SlideThumb({slide,idx,total,theme,fs,active,onClick,size=190}:{slide:Sl
   const ref=useRef<HTMLCanvasElement>(null), imgRef=useRef<HTMLImageElement|null>(null)
   useEffect(()=>{
     if(!ref.current)return
+    const isStory = slide.mode==='story'
+    const H = isStory ? Math.round(size*16/9) : Math.round(size*1350/1080)
+    if(ref.current.height !== H){ ref.current.height = H }
     const draw=()=>{if(ref.current)drawThumb(slide,idx,total,theme,fs,ref.current,imgRef.current)}
+    const bgSrc = slide.uploadedBg || slide.bgImage
     const run=()=>{
-      if(slide.bgImage&&(!imgRef.current||imgRef.current.src!==slide.bgImage)){
+      if(bgSrc&&(!imgRef.current||imgRef.current.src!==bgSrc)){
         const img=new Image(); img.crossOrigin='anonymous'
-        img.onload=()=>{imgRef.current=img;draw()}; img.onerror=()=>{imgRef.current=null;draw()}; img.src=slide.bgImage
+        img.onload=()=>{imgRef.current=img;draw()}; img.onerror=()=>{imgRef.current=null;draw()}; img.src=bgSrc
       }else draw()
     }
     if(document.fonts?.ready){document.fonts.ready.then(run)}else run()
-  },[slide,theme,fs,idx,total])
-  const H=Math.round(size*1350/1080)
+  },[slide,theme,fs,idx,total,size])
+  const isStory = slide.mode==='story'
+  const H = isStory ? Math.round(size*16/9) : Math.round(size*1350/1080)
   return <canvas ref={ref} width={size} height={H} onClick={onClick} style={{borderRadius:11,cursor:'pointer',display:'block',flexShrink:0,boxShadow:active?'0 0 0 3px #CC3333,0 0 0 6px rgba(204,51,51,0.25)':'0 0 0 1px rgba(255,255,255,0.07)',transform:active?'translateY(-3px)':'none',transition:'all .18s'}}/>
 }
 
@@ -247,7 +244,6 @@ function Badge({s}:{s:PostStatus}){
   return <span style={{fontSize:10,fontWeight:700,padding:'2px 9px',borderRadius:20,color:c,background:bg,border:`1px solid ${c}40`}}>{l}</span>
 }
 
-// Parse slides JSON from AI chat response
 function parseSlidesFromText(text:string): Slide[]|null {
   try {
     const match = text.match(/```json\s*([\s\S]+?)```/) || text.match(/(\[\s*\{[\s\S]+\}\s*\])/)
@@ -259,23 +255,423 @@ function parseSlidesFromText(text:string): Slide[]|null {
   return null
 }
 
-// Render slide text preview card
 function SlidePreviewCard({slide, idx}: {slide: Slide, idx: number}) {
   return (
     <div style={{background:'#1E1E1E',border:'1px solid rgba(255,255,255,0.08)',borderRadius:12,padding:'12px 14px',marginBottom:8,direction:'rtl'}}>
       <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
-        <span style={{background:'#CC3333',color:'#fff',fontSize:10,fontWeight:800,padding:'2px 8px',borderRadius:6,flexShrink:0}}>
-          {idx+1}
-        </span>
-        <span style={{fontSize:14,fontWeight:800,color:'#F0EDE8',lineHeight:1.5}}>
-          {slide.headline.replace(/\*+/g,'')}
-        </span>
+        <span style={{background:'#CC3333',color:'#fff',fontSize:10,fontWeight:800,padding:'2px 8px',borderRadius:6,flexShrink:0}}>{idx+1}</span>
+        <span style={{fontSize:14,fontWeight:800,color:'#F0EDE8',lineHeight:1.5}}>{slide.headline.replace(/\*+/g,'')}</span>
       </div>
-      {slide.body && (
-        <div style={{fontSize:12,color:'rgba(240,237,232,0.6)',lineHeight:1.7,paddingRight:32}}>
-          {slide.body}
+      {slide.body && <div style={{fontSize:12,color:'rgba(240,237,232,0.6)',lineHeight:1.7,paddingRight:32}}>{slide.body}</div>}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════
+// DRAG TEXT EDITOR — Full-screen slide editor with
+// draggable headline + body text blocks
+// ═══════════════════════════════════════════════════
+function DragEditor({slide, theme, fs, onSave, onClose}: {
+  slide: Slide; theme: Theme; fs: number;
+  onSave: (updates: Partial<Slide>) => void;
+  onClose: () => void;
+}) {
+  const isStory = slide.mode === 'story'
+  // Positions stored as % of container (0-100)
+  const [headPos, setHeadPos] = useState({ x: slide.headX ?? 50, y: slide.headY ?? (isStory ? 40 : 38) })
+  const [bodyPos, setBodyPos] = useState({ x: slide.bodyX ?? 50, y: slide.bodyY ?? (isStory ? 55 : 58) })
+  const [dragging, setDragging] = useState<'head'|'body'|null>(null)
+  const [activeEl, setActiveEl] = useState<'head'|'body'|null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const dragStart = useRef<{mx:number;my:number;ox:number;oy:number}|null>(null)
+  const t = T[theme]
+  const hasBg = !!(slide.uploadedBg || slide.bgImage)
+
+  function getContainerRect() {
+    return containerRef.current?.getBoundingClientRect() ?? {left:0,top:0,width:1,height:1}
+  }
+
+  function startDrag(e: React.PointerEvent, which: 'head'|'body') {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragging(which)
+    setActiveEl(which)
+    const pos = which === 'head' ? headPos : bodyPos
+    const rect = getContainerRect()
+    dragStart.current = {
+      mx: e.clientX, my: e.clientY,
+      ox: pos.x, oy: pos.y
+    }
+    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+  }
+
+  function onPointerMove(e: React.PointerEvent) {
+    if(!dragging || !dragStart.current) return
+    const rect = getContainerRect()
+    const dx = (e.clientX - dragStart.current.mx) / rect.width * 100
+    const dy = (e.clientY - dragStart.current.my) / rect.height * 100
+    const nx = Math.max(5, Math.min(95, dragStart.current.ox + dx))
+    const ny = Math.max(5, Math.min(95, dragStart.current.oy + dy))
+    if(dragging === 'head') setHeadPos({x: nx, y: ny})
+    else setBodyPos({x: nx, y: ny})
+  }
+
+  function onPointerUp() {
+    setDragging(null)
+    dragStart.current = null
+  }
+
+  function handleSave() {
+    onSave({ headX: Math.round(headPos.x), headY: Math.round(headPos.y), bodyX: Math.round(bodyPos.x), bodyY: Math.round(bodyPos.y) })
+    onClose()
+  }
+
+  function resetPositions() {
+    const defHead = { x: 50, y: isStory ? 40 : 38 }
+    const defBody = { x: 50, y: isStory ? 55 : 58 }
+    setHeadPos(defHead)
+    setBodyPos(defBody)
+  }
+
+  const aspectRatio = isStory ? 9/16 : 1080/1350
+  const headlineClean = slide.headline.replace(/\*+/g, '')
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.97)',zIndex:2000,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}}>
+      {/* Header */}
+      <div style={{width:'100%',maxWidth:600,display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 16px',flexShrink:0}}>
+        <div style={{fontFamily:"'Tajawal',sans-serif",fontWeight:900,fontSize:15,color:'#F0EDE8'}}>
+          ✦ تحريك النصوص
         </div>
-      )}
+        <div style={{display:'flex',gap:8}}>
+          <button onClick={resetPositions} style={{...btnD,padding:'7px 12px',fontSize:12}}>↺ إعادة</button>
+          <button onClick={handleSave} style={{...btnR,padding:'7px 14px',fontSize:12}}>✓ حفظ</button>
+          <button onClick={onClose} style={{...btnD,width:32,height:32,padding:0,justifyContent:'center',fontSize:16}}>✕</button>
+        </div>
+      </div>
+
+      {/* Instruction bar */}
+      <div style={{fontSize:11,color:'#555',marginBottom:10,textAlign:'center',padding:'0 20px',direction:'rtl'}}>
+        اضغط مطولاً على <span style={{color:'#CC3333',fontWeight:800}}>العنوان</span> أو <span style={{color:'#60C8FF',fontWeight:800}}>النص</span> واسحبهم
+      </div>
+
+      {/* Slide canvas area */}
+      <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',width:'100%',padding:'0 16px',minHeight:0}}>
+        <div
+          ref={containerRef}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerLeave={onPointerUp}
+          style={{
+            position:'relative',
+            width:'min(100%, calc((100dvh - 160px) * '+aspectRatio+')',
+            aspectRatio: `${isStory ? '9/16' : '1080/1350'}`,
+            maxHeight:'calc(100dvh - 160px)',
+            borderRadius:16,
+            overflow:'hidden',
+            background: hasBg ? 'transparent' : t.bg,
+            userSelect:'none',
+            touchAction:'none',
+            flexShrink:0,
+          }}
+        >
+          {/* Background */}
+          {hasBg && (
+            <img
+              src={slide.uploadedBg || slide.bgImage}
+              style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}}
+              crossOrigin="anonymous"
+            />
+          )}
+          {hasBg && (
+            <div style={{position:'absolute',inset:0,background:`rgba(0,0,0,${slide.overlayOpacity??0.72})`}}/>
+          )}
+
+          {/* Gradient accent */}
+          <div style={{position:'absolute',inset:0,background:'radial-gradient(circle at 110% -10%, rgba(204,51,51,0.35), transparent 60%)',pointerEvents:'none'}}/>
+
+          {/* 5GATES brand */}
+          <div style={{position:'absolute',top:'3%',left:'50%',transform:'translateX(-50%)',fontFamily:"'Tajawal',sans-serif",fontWeight:900,fontSize:'clamp(8px,2.2vw,18px)',color:hasBg?'rgba(255,255,255,0.5)':t.brand,letterSpacing:2,pointerEvents:'none'}}>5GATES</div>
+
+          {/* Icon watermark */}
+          <div style={{position:'absolute',top:'5%',left:'5%',fontSize:'clamp(20px,6vw,60px)',opacity:0.1,pointerEvents:'none'}}>{getIcon(slide.headline,slide.icon)}</div>
+          <div style={{position:'absolute',top:'4%',right:'4%',fontSize:'clamp(18px,5vw,48px)',pointerEvents:'none'}}>{getIcon(slide.headline,slide.icon)}</div>
+
+          {/* Grid overlay - subtle guide lines */}
+          <div style={{position:'absolute',inset:0,pointerEvents:'none',opacity:0.06}}>
+            <div style={{position:'absolute',left:'50%',top:0,bottom:0,width:1,background:'#fff'}}/>
+            <div style={{position:'absolute',top:'33%',left:0,right:0,height:1,background:'#fff'}}/>
+            <div style={{position:'absolute',top:'66%',left:0,right:0,height:1,background:'#fff'}}/>
+          </div>
+
+          {/* HEADLINE draggable */}
+          <div
+            onPointerDown={e => startDrag(e, 'head')}
+            style={{
+              position:'absolute',
+              left:`${headPos.x}%`,
+              top:`${headPos.y}%`,
+              transform:'translate(-50%, -50%)',
+              cursor: dragging==='head' ? 'grabbing' : 'grab',
+              touchAction:'none',
+              zIndex: activeEl==='head' ? 10 : 5,
+              maxWidth:'80%',
+              textAlign:'center',
+            }}
+          >
+            <div style={{
+              padding:'8px 12px',
+              border: activeEl==='head' ? '2px dashed rgba(204,51,51,0.8)' : '2px dashed rgba(204,51,51,0.3)',
+              borderRadius:10,
+              background: activeEl==='head' ? 'rgba(204,51,51,0.1)' : 'transparent',
+              transition: dragging ? 'none' : 'border-color 0.2s, background 0.2s',
+            }}>
+              {/* Drag handle label */}
+              <div style={{position:'absolute',top:-20,left:'50%',transform:'translateX(-50%)',fontSize:9,fontWeight:800,color:'#CC3333',whiteSpace:'nowrap',opacity:activeEl==='head'?1:0,transition:'opacity 0.2s'}}>
+                ↕↔ العنوان
+              </div>
+              <div style={{
+                fontFamily:"'Cairo',sans-serif",
+                fontWeight:900,
+                fontSize:'clamp(12px,3.5vw,28px)',
+                color: hasBg ? '#FFFFFF' : t.text,
+                lineHeight:1.4,
+                direction:'rtl',
+                whiteSpace:'pre-wrap',
+                wordBreak:'break-word',
+              }}>
+                {headlineClean}
+              </div>
+            </div>
+          </div>
+
+          {/* BODY draggable */}
+          {slide.body && (
+            <div
+              onPointerDown={e => startDrag(e, 'body')}
+              style={{
+                position:'absolute',
+                left:`${bodyPos.x}%`,
+                top:`${bodyPos.y}%`,
+                transform:'translate(-50%, -50%)',
+                cursor: dragging==='body' ? 'grabbing' : 'grab',
+                touchAction:'none',
+                zIndex: activeEl==='body' ? 10 : 5,
+                maxWidth:'80%',
+                textAlign:'center',
+              }}
+            >
+              <div style={{
+                padding:'6px 10px',
+                border: activeEl==='body' ? '2px dashed rgba(96,200,255,0.8)' : '2px dashed rgba(96,200,255,0.3)',
+                borderRadius:10,
+                background: activeEl==='body' ? 'rgba(96,200,255,0.08)' : 'transparent',
+                transition: dragging ? 'none' : 'border-color 0.2s, background 0.2s',
+              }}>
+                <div style={{position:'absolute',top:-20,left:'50%',transform:'translateX(-50%)',fontSize:9,fontWeight:800,color:'#60C8FF',whiteSpace:'nowrap',opacity:activeEl==='body'?1:0,transition:'opacity 0.2s'}}>
+                  ↕↔ النص
+                </div>
+                <div style={{
+                  fontFamily:"'Cairo',sans-serif",
+                  fontWeight:500,
+                  fontSize:'clamp(9px,2.2vw,17px)',
+                  color: hasBg ? 'rgba(255,255,255,0.85)' : t.sub,
+                  lineHeight:1.7,
+                  direction:'rtl',
+                  whiteSpace:'pre-wrap',
+                  wordBreak:'break-word',
+                }}>
+                  {slide.body}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Handle bar bottom */}
+          <div style={{position:'absolute',bottom:'4%',right:'5%',fontFamily:"'Cairo',sans-serif",fontWeight:700,fontSize:'clamp(7px,1.8vw,13px)',color:hasBg?'rgba(255,255,255,0.35)':t.brand,pointerEvents:'none'}}>
+            {slide.handle||'@5gates.bh'}
+          </div>
+          <div style={{position:'absolute',bottom:'3%',right:'5%',width:'8%',height:3,borderRadius:2,background:'#CC3333',pointerEvents:'none'}}/>
+        </div>
+      </div>
+
+      {/* Position readout */}
+      <div style={{padding:'10px 0 4px',display:'flex',gap:16,fontSize:10,color:'#333',fontFamily:'monospace'}}>
+        <span style={{color:'rgba(204,51,51,0.6)'}}>عنوان: {Math.round(headPos.x)}%, {Math.round(headPos.y)}%</span>
+        <span style={{color:'rgba(96,200,255,0.6)'}}>نص: {Math.round(bodyPos.x)}%, {Math.round(bodyPos.y)}%</span>
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════
+// AI BRANDING MODAL — upload image + describe → branded slide
+// ═══════════════════════════════════════════════════
+function AiBrandingModal({onClose, onApply, theme}: {
+  onClose: () => void;
+  onApply: (slide: Partial<Slide>) => void;
+  theme: Theme;
+}) {
+  const [imgData, setImgData] = useState<string|null>(null)
+  const [prompt, setPrompt] = useState('')
+  const [outputMode, setOutputMode] = useState<'carousel'|'story'>('carousel')
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState<{headline:string;body:string}|null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    if(!f) return
+    const reader = new FileReader()
+    reader.onload = ev => setImgData(ev.target?.result as string)
+    reader.readAsDataURL(f)
+  }
+
+  async function generate() {
+    if(!prompt.trim()) return
+    setLoading(true)
+    try {
+      const messages: any[] = [{ role: 'user', content: [] as any[] }]
+      if(imgData) {
+        const base64 = imgData.split(',')[1]
+        const mtype = imgData.startsWith('data:image/png') ? 'image/png' : 'image/jpeg'
+        messages[0].content.push({ type: 'image', source: { type: 'base64', media_type: mtype, data: base64 } })
+      }
+      messages[0].content.push({
+        type: 'text',
+        text: `أنت مصمم محتوى لشركة FIVEGATES للاستشارات المحاسبية في البحرين.
+هوية الشركة: ألوان - أحمر غامق #CC3333، خلفيات داكنة. خط عربي بولد. أسلوب احترافي ومباشر.
+
+المطلوب: ${prompt}
+نوع المحتوى: ${outputMode === 'story' ? 'ستوري (9:16)' : 'كاروسيل (4:5)'}
+${imgData ? 'الصورة المرفوعة: استخدمها كخلفية للبوست.' : ''}
+
+أجب فقط بـ JSON بهذا الشكل (بدون أي نص إضافي):
+{"headline":"العنوان الرئيسي بالعربي (مختصر وقوي، ممكن يحتوي **تمييز أحمر**)","body":"النص الوصفي (جملة أو جملتين)"}`
+      })
+
+      const r = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system: 'أنت مصمم محتوى محترف. أجب فقط بـ JSON صالح بدون أي نص إضافي أو markdown.',
+          messages
+        })
+      })
+      const d = await r.json()
+      const text = d.reply || d.content || d.message || ''
+      const clean = text.replace(/```json|```/g, '').trim()
+      const parsed = JSON.parse(clean)
+      setResult(parsed)
+    } catch(e: any) {
+      // fallback if no /api/chat — build basic branded slide
+      setResult({
+        headline: `**${prompt.slice(0,20)}**`,
+        body: 'تواصل مع فايف غيتس للاستشارات المحاسبية في البحرين'
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function apply() {
+    if(!result) return
+    onApply({
+      headline: result.headline,
+      body: result.body,
+      handle: '@5gates.bh',
+      uploadedBg: imgData || undefined,
+      overlayOpacity: imgData ? 0.65 : 0.72,
+      mode: outputMode,
+      textAlign: 'middle',
+    })
+    onClose()
+  }
+
+  return (
+    <div onClick={e=>{if(e.target===e.currentTarget)onClose()}} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.92)',backdropFilter:'blur(18px)',zIndex:1500,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
+      <div style={{background:'#1A1A1A',border:'1px solid rgba(255,255,255,0.1)',borderTop:'3px solid #CC3333',borderRadius:'20px 20px 0 0',width:'100%',maxWidth:560,maxHeight:'92dvh',display:'flex',flexDirection:'column'}}>
+        <div style={{padding:'16px 20px 12px',flexShrink:0}}>
+          <div style={{width:36,height:4,background:'rgba(255,255,255,0.15)',borderRadius:2,margin:'0 auto 14px'}}/>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <div style={{fontFamily:"'Tajawal',sans-serif",fontWeight:900,fontSize:17}}>🎨 برندة AI — 5GATES</div>
+            <button onClick={onClose} style={{...btnD,width:32,height:32,padding:0,justifyContent:'center'}}>✕</button>
+          </div>
+          <div style={{fontSize:11,color:'#444',marginTop:6,direction:'rtl'}}>ارفع صورة + وصف → AI يولّد محتوى ببراند 5GATES</div>
+        </div>
+
+        <div style={{flex:1,overflowY:'auto',padding:'0 20px 20px'}}>
+          {/* Output mode */}
+          <div style={{display:'flex',gap:0,marginBottom:16,background:'#111',borderRadius:10,padding:3}}>
+            {(['carousel','story'] as const).map(m=>(
+              <button key={m} onClick={()=>setOutputMode(m)} style={{flex:1,padding:'9px',background:outputMode===m?'#CC3333':'transparent',border:'none',borderRadius:8,color:outputMode===m?'#fff':'#444',fontFamily:"'Cairo',sans-serif",fontSize:13,fontWeight:800,cursor:'pointer',transition:'all .15s',WebkitTapHighlightColor:'transparent'}}>
+                {m==='carousel'?'🎠 كاروسيل':'📱 ستوري'}
+              </button>
+            ))}
+          </div>
+
+          {/* Image upload */}
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:10,color:'#444',fontWeight:800,marginBottom:6}}>صورة الخلفية (اختياري)</div>
+            <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{display:'none'}}/>
+            {imgData ? (
+              <div style={{position:'relative',borderRadius:12,overflow:'hidden',marginBottom:4}}>
+                <img src={imgData} style={{width:'100%',maxHeight:160,objectFit:'cover',display:'block'}}/>
+                <button onClick={()=>setImgData(null)} style={{position:'absolute',top:8,left:8,...btnD,width:28,height:28,padding:0,justifyContent:'center',fontSize:12}}>✕</button>
+                <div style={{position:'absolute',bottom:0,left:0,right:0,padding:'6px 10px',background:'linear-gradient(to top,rgba(0,0,0,0.8),transparent)',fontSize:11,color:'rgba(255,255,255,0.7)'}}>تم رفع الصورة ✓</div>
+              </div>
+            ) : (
+              <button onClick={()=>fileRef.current?.click()} style={{width:'100%',background:'#111',border:'2px dashed rgba(255,255,255,0.1)',borderRadius:12,padding:'24px',cursor:'pointer',color:'#444',fontFamily:"'Cairo',sans-serif",fontSize:13,display:'flex',flexDirection:'column',alignItems:'center',gap:6}}>
+                <span style={{fontSize:28}}>🖼️</span>
+                <span>اضغط لرفع صورة</span>
+                <span style={{fontSize:10,color:'#333'}}>JPG, PNG, WebP</span>
+              </button>
+            )}
+          </div>
+
+          {/* Prompt */}
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:10,color:'#444',fontWeight:800,marginBottom:6}}>وصف المطلوب</div>
+            <textarea
+              value={prompt}
+              onChange={e=>setPrompt(e.target.value)}
+              rows={3}
+              style={{...inp,resize:'none',lineHeight:1.8,fontSize:13}}
+              placeholder="مثال: اعمل بوست ترحيب بعميل جديد ببراند 5GATES، أو: بوست عن خدمة المحاسبة الشهرية"
+            />
+            <div style={{display:'flex',flexWrap:'wrap',gap:5,marginTop:6}}>
+              {['بوست ترحيب بعميل','خدمة المحاسبة الشهرية','عروض رمضان','إطلاق خدمة جديدة'].map(p=>(
+                <div key={p} onClick={()=>setPrompt(p)} style={{background:'#222',border:'1px solid rgba(255,255,255,0.08)',borderRadius:20,padding:'4px 10px',fontSize:11,color:'#555',cursor:'pointer',fontFamily:"'Cairo',sans-serif"}}>{p}</div>
+              ))}
+            </div>
+          </div>
+
+          {/* Result preview */}
+          {result && (
+            <div style={{background:'rgba(204,51,51,0.06)',border:'1px solid rgba(204,51,51,0.2)',borderRadius:12,padding:14,marginBottom:14,direction:'rtl'}}>
+              <div style={{fontSize:10,color:'#CC3333',fontWeight:800,marginBottom:8}}>✦ النتيجة</div>
+              <div style={{fontSize:14,fontWeight:800,color:'#F0EDE8',marginBottom:6,lineHeight:1.5}}>{result.headline.replace(/\*+/g,'')}</div>
+              <div style={{fontSize:12,color:'rgba(240,237,232,0.6)',lineHeight:1.7}}>{result.body}</div>
+            </div>
+          )}
+
+          <div style={{display:'flex',gap:10}}>
+            {!result ? (
+              <>
+                <button onClick={onClose} style={{...btnD,flex:1,justifyContent:'center'}}>إلغاء</button>
+                <button onClick={generate} disabled={loading||!prompt.trim()} style={{...btnR,flex:2,justifyContent:'center',opacity:(loading||!prompt.trim())?.6:1}}>
+                  {loading ? <><span style={{width:14,height:14,border:'2px solid rgba(255,255,255,0.2)',borderTopColor:'#fff',borderRadius:'50%',animation:'spin .6s linear infinite',display:'inline-block'}}/> يولّد…</> : '✦ توليد بـ AI'}
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={()=>setResult(null)} style={{...btnD,flex:1,justifyContent:'center'}}>↺ جرب مجدداً</button>
+                <button onClick={apply} style={{...btnR,flex:2,justifyContent:'center'}}>✓ إضافة للمنشئ</button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -295,7 +691,7 @@ export default function App(){
   const [active,setActive]=useState(0)
   const [theme,setTheme]=useState<Theme>('dark')
   const [fs,setFs]=useState(1.0)
-  const [eHead,setEHead]=useState(''); const [eBody,setEBody]=useState(''); const [eHandle,setEHandle]=useState(DEFAULT_HANDLE)
+  const [eHead,setEHead]=useState(''); const [eBody,setEBody]=useState(''); const [eHandle,setEHandle]=useState('@5gates.bh')
   const [caption,setCaption]=useState(''); const [schedDate,setSchedDate]=useState(''); const [schedTime,setSchedTime]=useState('09:00')
   const [uploading,setUploading]=useState(false); const [schedMsg,setSchedMsg]=useState('')
   const [aiOpen,setAiOpen]=useState(false)
@@ -308,6 +704,11 @@ export default function App(){
   const [saveOpen,setSaveOpen]=useState(false); const [saveName,setSaveName]=useState('')
   const [mPanel,setMPanel]=useState<'slides'|'preview'|'design'>('preview')
 
+  // New feature states
+  const [dragEditorOpen, setDragEditorOpen] = useState(false)
+  const [brandingOpen, setBrandingOpen] = useState(false)
+  const uploadBgRef = useRef<HTMLInputElement>(null)
+
   // AI Chat state
   const [aiStep,setAiStep]=useState<AiStep>('input')
   const [aiPrompt,setAiPrompt]=useState('')
@@ -317,6 +718,7 @@ export default function App(){
   const [aiTone,setAiTone]=useState('bold')
   const [aiInputMode,setAiInputMode]=useState<'topic'|'manual'>('topic')
   const [aiPostMode,setAiPostMode]=useState<'post'|'carousel'>('carousel')
+  const [aiSlideMode,setAiSlideMode]=useState<'carousel'|'story'>('carousel')
   const [aiManualText,setAiManualText]=useState('')
   const [chatMsgs,setChatMsgs]=useState<ChatMsg[]>([])
   const [chatInput,setChatInput]=useState('')
@@ -324,15 +726,6 @@ export default function App(){
   const [previewSlides,setPreviewSlides]=useState<Slide[]>([])
   const [confirming,setConfirming]=useState(false)
   const chatBottomRef=useRef<HTMLDivElement>(null)
-
-  // CHANGE 5: drag-to-reorder
-  const dragIdx=useRef<number|null>(null)
-  const dragOverIdx=useRef<number|null>(null)
-
-  // CHANGE 6+8: download modal state
-  const [dlOpen,setDlOpen]=useState(false)
-  const [dlSel,setDlSel]=useState<Set<number>>(new Set())
-  const [dlLoading,setDlLoading]=useState(false)
 
   const showToast=(m:string)=>{setToast(m);setTimeout(()=>setToast(''),3200)}
 
@@ -354,15 +747,16 @@ export default function App(){
 
   const upd=(field:Partial<Slide>)=>setSlides(p=>{const n=[...p];n[active]={...n[active],...field};return n})
 
-  // CHANGE 5: drag-to-reorder handlers
-  function onDragStart(i:number){dragIdx.current=i}
-  function onDragOver(e:React.DragEvent,i:number){e.preventDefault();dragOverIdx.current=i}
-  function onDrop(){
-    const from=dragIdx.current,to=dragOverIdx.current
-    if(from===null||to===null||from===to){dragIdx.current=null;dragOverIdx.current=null;return}
-    const n=[...slides];const [moved]=n.splice(from,1);n.splice(to,0,moved)
-    setSlides(n);setActive(to)
-    dragIdx.current=null;dragOverIdx.current=null
+  // Handle user-uploaded background image
+  function handleBgUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    if(!f) return
+    const reader = new FileReader()
+    reader.onload = ev => {
+      upd({ uploadedBg: ev.target?.result as string, bgImage: undefined })
+      showToast('🖼️ تم رفع الصورة!')
+    }
+    reader.readAsDataURL(f)
   }
 
   function resetAiModal(){
@@ -377,36 +771,20 @@ export default function App(){
     if(r.ok)setAuthed(true); else setPwErr('كلمة المرور غير صحيحة')
   }
 
-  // Step 1: Generate initial carousel suggestion via existing /api/generate
   async function startGeneration(){
     const topic = aiInputMode==='topic' ? aiPrompt.trim() : aiManualText.trim()
     if(!topic){showToast('أدخل موضوعاً أو نصاً');return}
     setChatLoading(true)
     setAiStep('chat')
-
-    const userMsg: ChatMsg = {
-      role:'user',
-      content: aiInputMode==='topic'
-        ? `الموضوع: ${topic}`
-        : `النص المدخل:\n${topic}`
-    }
+    const userMsg: ChatMsg = { role:'user', content: aiInputMode==='topic' ? `الموضوع: ${topic}` : `النص المدخل:\n${topic}` }
     setChatMsgs([userMsg])
-
     try{
       const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:topic,numSlides:aiPostMode==='post'?1:+aiNum,lang:aiLang,type:aiType,tone:aiTone})})
       const d=await r.json(); if(d.error)throw new Error(d.error)
-      const generatedSlides: Slide[] = d.slides.map((s:any)=>({...s,textAlign:'middle',overlayOpacity:0.72}))
+      const generatedSlides: Slide[] = d.slides.map((s:any)=>({...s,textAlign:'middle',overlayOpacity:0.72,mode:aiSlideMode}))
       setPreviewSlides(generatedSlides)
-
-      // Build readable text preview
-      const previewText = generatedSlides.map((sl,i)=>
-        `**شريحة ${i+1}:** ${sl.headline.replace(/\*+/g,'')}\n${sl.body||''}`
-      ).join('\n\n')
-
-      const assistantMsg: ChatMsg = {
-        role:'assistant',
-        content: `✦ ${aiPostMode==='post'?'هذا مقترح البوست':'هذه مقترحات الكاروسيل'} (${generatedSlides.length} ${generatedSlides.length===1?'شريحة':'شرائح'}):\n\n${previewText}\n\n---\nقل لي أي تعديل تريد، أو اكتب **"تأكيد"** لتحويله ${aiPostMode==='post'?'لبوست بصري':'لكاروسيل بصري'}.`
-      }
+      const previewText = generatedSlides.map((sl,i)=>`**شريحة ${i+1}:** ${sl.headline.replace(/\*+/g,'')}\n${sl.body||''}`).join('\n\n')
+      const assistantMsg: ChatMsg = { role:'assistant', content: `✦ ${aiPostMode==='post'?'هذا مقترح البوست':'هذه مقترحات الكاروسيل'} (${generatedSlides.length} ${generatedSlides.length===1?'شريحة':'شرائح'}) — نوع: ${aiSlideMode==='story'?'📱 ستوري':'🎠 كاروسيل'}:\n\n${previewText}\n\n---\nقل لي أي تعديل تريد، أو اكتب **"تأكيد"** للتحويل.` }
       setChatMsgs([userMsg, assistantMsg])
     }catch(e:any){
       setChatMsgs(prev=>[...prev,{role:'assistant',content:`خطأ: ${e.message}`}])
@@ -416,18 +794,14 @@ export default function App(){
     }
   }
 
-  // Chat refinement — detect "تأكيد" or send refinement to Claude
   async function sendChat(){
     const msg=chatInput.trim()
     if(!msg)return
     setChatInput('')
-
     const isConfirm = /^تأكيد$|^confirm$|^تأكيد\s*$/i.test(msg)
-
     if(isConfirm){
-      // Confirm — apply current previewSlides to the builder
       setConfirming(true)
-      setSlides(previewSlides.map(s=>cleanSlide({...s,handle:DEFAULT_HANDLE})))
+      setSlides(previewSlides)
       setActive(0)
       setAiOpen(false)
       resetAiModal()
@@ -436,66 +810,34 @@ export default function App(){
       setConfirming(false)
       return
     }
-
     const newMsgs: ChatMsg[] = [...chatMsgs, {role:'user',content:msg}]
     setChatMsgs(newMsgs)
     setChatLoading(true)
-
     try{
-      // Build system prompt with current slides as context
       const currentSlidesJson = JSON.stringify(previewSlides.map(s=>({headline:s.headline,body:s.body})))
-      const systemPrompt = `أنت مساعد متخصص في إنشاء محتوى كاروسيل للسوشيال ميديا باللغة ${aiLang==='ar'?'العربية':'الإنجليزية'} لشركة 5GATES للاستشارات المحاسبية في البحرين.
-
-الشرائح الحالية:
-${currentSlidesJson}
-
-المستخدم سيطلب تعديلات. قم بتطبيقها وأعد إرسال الشرائح المحدّثة بالتنسيق التالي:
-
-\`\`\`json
-[{"headline":"...","body":"..."},...]
-\`\`\`
-
-ثم بعد الـ JSON أضف ملخصاً قصيراً بالعربية لما تم تعديله.
-اكتب "تأكيد" للمستخدم إذا أراد التأكيد.`
-
-      const r=await fetch('/api/chat',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({
-          system: systemPrompt,
-          messages: newMsgs.map(m=>({role:m.role,content:m.content}))
-        })
-      })
-
+      const systemPrompt = `أنت مساعد متخصص في إنشاء محتوى كاروسيل للسوشيال ميديا باللغة ${aiLang==='ar'?'العربية':'الإنجليزية'} لشركة 5GATES للاستشارات المحاسبية في البحرين.\n\nالشرائح الحالية:\n${currentSlidesJson}\n\nالمستخدم سيطلب تعديلات. قم بتطبيقها وأعد إرسال الشرائح المحدّثة بالتنسيق التالي:\n\n\`\`\`json\n[{"headline":"...","body":"..."},...]\n\`\`\`\n\nثم بعد الـ JSON أضف ملخصاً قصيراً بالعربية لما تم تعديله.`
+      const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({system:systemPrompt,messages:newMsgs.map(m=>({role:m.role,content:m.content}))})})
       let aiReply = ''
       if(r.ok){
         const d=await r.json()
         aiReply = d.reply || d.content || d.message || ''
       } else {
-        // Fallback: use /api/generate with modified prompt
         const modPrompt = `${msg}. المحتوى الحالي: ${previewSlides.map(s=>s.headline).join('، ')}`
         const gr=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:modPrompt,numSlides:previewSlides.length,lang:aiLang,type:aiType,tone:aiTone})})
         const gd=await gr.json()
         if(!gd.error && gd.slides){
-          const updatedSlides: Slide[] = gd.slides.map((s:any)=>({...s,textAlign:'middle',overlayOpacity:0.72}))
+          const updatedSlides: Slide[] = gd.slides.map((s:any)=>({...s,textAlign:'middle',overlayOpacity:0.72,mode:aiSlideMode}))
           setPreviewSlides(updatedSlides)
-          const previewText = updatedSlides.map((sl,i)=>
-            `**شريحة ${i+1}:** ${sl.headline.replace(/\*+/g,'')}\n${sl.body||''}`
-          ).join('\n\n')
+          const previewText = updatedSlides.map((sl,i)=>`**شريحة ${i+1}:** ${sl.headline.replace(/\*+/g,'')}\n${sl.body||''}`).join('\n\n')
           aiReply = `✦ تم التعديل:\n\n${previewText}\n\n---\nاكتب **"تأكيد"** للمتابعة أو أخبرني بأي تعديل آخر.`
         }
       }
-
-      // Try to parse updated slides from reply
       const parsed = parseSlidesFromText(aiReply)
       if(parsed){
-        const updSlides = parsed.map(s=>cleanSlide({...s,textAlign:'middle' as TextAlign,overlayOpacity:0.72,handle:DEFAULT_HANDLE}))
+        const updSlides = parsed.map(s=>({...s,textAlign:'middle' as TextAlign,overlayOpacity:0.72,handle:'@5gates.bh',mode:aiSlideMode}))
         setPreviewSlides(updSlides)
-        // Clean up JSON from display message
         const cleanReply = aiReply.replace(/```json[\s\S]+?```/g,'').trim()
-        const previewText = updSlides.map((sl,i)=>
-          `**شريحة ${i+1}:** ${sl.headline.replace(/\*+/g,'')}\n${sl.body||''}`
-        ).join('\n\n')
+        const previewText = updSlides.map((sl,i)=>`**شريحة ${i+1}:** ${sl.headline.replace(/\*+/g,'')}\n${sl.body||''}`).join('\n\n')
         setChatMsgs([...newMsgs,{role:'assistant',content:`✦ تم التعديل:\n\n${previewText}\n\n---\n${cleanReply}\n\nاكتب **"تأكيد"** للمتابعة.`}])
       } else {
         setChatMsgs([...newMsgs,{role:'assistant',content:aiReply||'تم التعديل. اكتب **"تأكيد"** للمتابعة أو أخبرني بأي تعديل آخر.'}])
@@ -509,54 +851,19 @@ ${currentSlidesJson}
 
   async function renderAll():Promise<string[]>{
     const r:string[]=[]
-    for(let i=0;i<slides.length;i++)r.push(await renderSlide(slides[i],i,slides.length,theme,fs))
+    for(let i=0;i<slides.length;i++){
+      const isStory = slides[i].mode==='story'
+      r.push(await renderSlide(slides[i],i,slides.length,theme,fs,1080,isStory?Math.round(1080*16/9):1350))
+    }
     return r
   }
 
-  async function renderSelected(indices:number[]):Promise<{img:string,idx:number}[]>{
-    const r:{img:string,idx:number}[]=[]
-    for(const i of indices)r.push({img:await renderSlide(slides[i],i,slides.length,theme,fs),idx:i})
-    return r
-  }
-
-  async function downloadAsPDF(indices:number[]){
-    const rendered=await renderSelected(indices)
-    const imgs=rendered.map(r=>r.img)
-    const html=`<!DOCTYPE html><html><head><style>
-      *{margin:0;padding:0;box-sizing:border-box}body{background:#000}
-      .page{width:100vw;height:100vh;display:flex;align-items:center;justify-content:center;page-break-after:always;background:#000}
-      img{max-width:100%;max-height:100%;object-fit:contain}
-      @media print{.page{page-break-after:always}}
-    </style></head><body>
-    ${imgs.map(src=>`<div class="page"><img src="${src}"/></div>`).join('')}
-    <script>window.onload=()=>{setTimeout(()=>window.print(),600)}<\/script>
-    </body></html>`
-    const blob=new Blob([html],{type:'text/html'})
-    const url=URL.createObjectURL(blob)
-    const a=document.createElement('a');a.href=url;a.target='_blank';a.click()
-    setTimeout(()=>URL.revokeObjectURL(url),5000)
-  }
-
-  function openDownload(){
-    setDlSel(new Set(slides.map((_,i)=>i)))
-    setDlOpen(true)
-  }
-
-  async function doDownload(asPdf:boolean){
-    if(dlSel.size===0){showToast('اختر شريحة واحدة على الأقل');return}
-    setDlLoading(true);showToast('⏳ جاري التحضير...')
-    const indices=Array.from(dlSel).sort((a,b)=>a-b)
-    try{
-      if(asPdf){
-        await downloadAsPDF(indices)
-        showToast(`📄 PDF جاهز — اطبع أو احفظ (${indices.length} شرائح)`)
-      }else{
-        const rendered=await renderSelected(indices)
-        rendered.forEach(({img,idx})=>{const a=document.createElement('a');a.href=img;a.download=`fivegates-${idx+1}.jpg`;a.click()})
-        showToast(`⬇️ تم تحميل ${rendered.length} صورة`)
-      }
-    }catch(e:any){showToast('خطأ: '+e.message)}
-    finally{setDlLoading(false);setDlOpen(false)}
+  async function downloadSlides(){
+    if(!slides.length){showToast('أضف شرائح أولاً');return}
+    showToast('⏳ جاري التحضير...')
+    const imgs=await renderAll()
+    imgs.forEach((b,i)=>{const a=document.createElement('a');a.href=b;a.download=`5gates-${i+1}.jpg`;a.click()})
+    showToast(`⬇️ تم تحميل ${imgs.length} صورة`)
   }
 
   function saveCar(){
@@ -616,7 +923,7 @@ ${currentSlidesJson}
     <div style={{minHeight:'100dvh',display:'flex',alignItems:'center',justifyContent:'center',background:'#0D0D0D',padding:20}}>
       <div style={{background:'#1A1A1A',border:'1px solid rgba(255,255,255,0.08)',borderTop:'3px solid #CC3333',borderRadius:20,padding:36,width:'100%',maxWidth:360,textAlign:'center'}}>
         <div style={{width:60,height:60,background:'#CC3333',borderRadius:14,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:"'Tajawal',sans-serif",fontWeight:900,fontSize:24,color:'#fff',margin:'0 auto 16px',boxShadow:'0 4px 24px rgba(204,51,51,0.5)'}}>5G</div>
-        <div style={{fontFamily:"'Tajawal',sans-serif",fontWeight:900,fontSize:24,marginBottom:4}}>FIVEGATES</div>
+        <div style={{fontFamily:"'Tajawal',sans-serif",fontWeight:900,fontSize:24,marginBottom:4}}>5GATES</div>
         <div style={{fontSize:11,color:'#CC3333',fontWeight:700,letterSpacing:1,marginBottom:28}}>CAROUSEL BUILDER</div>
         <input type="password" placeholder="كلمة المرور" value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==='Enter'&&login()} style={{...inp,textAlign:'center',marginBottom:10,fontSize:16}}/>
         {pwErr&&<div style={{color:'#FF5555',fontSize:13,marginBottom:10}}>{pwErr}</div>}
@@ -630,12 +937,14 @@ ${currentSlidesJson}
       <header style={{height:54,background:'#1A1A1A',borderBottom:'2px solid #CC3333',display:'flex',alignItems:'center',padding:'0 12px',gap:8,flexShrink:0,zIndex:10}}>
         <div style={{display:'flex',alignItems:'center',gap:8,flex:1,minWidth:0}}>
           <div style={{width:34,height:34,background:'#CC3333',borderRadius:9,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:"'Tajawal',sans-serif",fontWeight:900,fontSize:14,color:'#fff',boxShadow:'0 3px 12px rgba(204,51,51,0.5)',flexShrink:0}}>5G</div>
-          <span style={{fontFamily:"'Tajawal',sans-serif",fontWeight:900,fontSize:15}}>FIVEGATES</span>
+          <span style={{fontFamily:"'Tajawal',sans-serif",fontWeight:900,fontSize:15}}>5GATES</span>
         </div>
         {tab==='builder'&&<>
+          <button onClick={()=>setBrandingOpen(true)} style={{...btnD,padding:'7px 11px',fontSize:12,color:'#CC3333',borderColor:'rgba(204,51,51,0.3)'}}>🎨 برندة</button>
           <button onClick={openAi} style={{...btnR,padding:'8px 13px',fontSize:12}}>✦ AI</button>
           {slides.length>0&&<>
-            <button onClick={openDownload} style={{...btnD,padding:'8px 11px',fontSize:15,minWidth:38,justifyContent:'center'}}>⬇️</button>
+            {sl && <button onClick={()=>setDragEditorOpen(true)} style={{...btnD,padding:'8px 11px',fontSize:15,minWidth:38,justifyContent:'center'}} title="تحريك النصوص">✥</button>}
+            <button onClick={downloadSlides} style={{...btnD,padding:'8px 11px',fontSize:15,minWidth:38,justifyContent:'center'}}>⬇️</button>
             <button onClick={()=>setSaveOpen(true)} style={{...btnD,padding:'8px 11px',fontSize:15,minWidth:38,justifyContent:'center'}}>💾</button>
           </>}
         </>}
@@ -644,7 +953,6 @@ ${currentSlidesJson}
 
       <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
 
-        {/* BUILDER */}
         {tab==='builder'&&(
           <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
             <div className="m-tabs" style={{display:'flex',background:'#161616',borderBottom:'1px solid rgba(255,255,255,0.06)',flexShrink:0}}>
@@ -659,25 +967,25 @@ ${currentSlidesJson}
               {/* LEFT */}
               <div className={`pnl pnl-L ${mPanel==='slides'?'m-on':''}`} style={{width:225,minWidth:225,background:'#1A1A1A',borderLeft:'1px solid rgba(255,255,255,0.07)',display:'flex',flexDirection:'column',overflow:'hidden',flexShrink:0}}>
                 <div style={{flex:1,overflowY:'auto',padding:10}}>
-                  <div style={{fontSize:9,color:'#444',marginBottom:6,letterSpacing:1,textAlign:'center'}}>↕ اسحب لإعادة الترتيب</div>
                   {slides.map((sl,i)=>(
-                    <div key={i}
-                      draggable
-                      onDragStart={()=>onDragStart(i)}
-                      onDragOver={e=>onDragOver(e,i)}
-                      onDrop={onDrop}
-                      onClick={()=>{setActive(i);setMPanel('preview')}}
-                      style={{background:active===i?'rgba(204,51,51,0.08)':'#222',border:`1px solid ${active===i?'#CC3333':'rgba(255,255,255,0.07)'}`,borderRadius:10,marginBottom:6,overflow:'hidden',display:'flex',cursor:'grab',boxShadow:active===i?'inset 3px 0 0 #CC3333':'none',userSelect:'none'}}>
+                    <div key={i} onClick={()=>{setActive(i);setMPanel('preview')}} style={{background:active===i?'rgba(204,51,51,0.08)':'#222',border:`1px solid ${active===i?'#CC3333':'rgba(255,255,255,0.07)'}`,borderRadius:10,marginBottom:6,overflow:'hidden',display:'flex',cursor:'pointer',boxShadow:active===i?'inset 3px 0 0 #CC3333':'none'}}>
                       <div style={{width:28,minHeight:50,background:active===i?'#CC3333':'#2A2A2A',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:800,color:active===i?'#fff':'#444',flexShrink:0}}>{i+1}</div>
                       <div style={{flex:1,padding:'7px 8px',minWidth:0}}>
                         <div style={{fontSize:12,fontWeight:700,color:'#F0EDE8',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',direction:'rtl'}}>{sl.headline.replace(/\*+/g,'')||`شريحة ${i+1}`}</div>
-                        <div style={{fontSize:10,color:'#444',marginTop:2}}>{getIcon(sl.headline,sl.icon)} {sl.bgImage?'🖼️':''}</div>
+                        <div style={{fontSize:10,color:'#444',marginTop:2,display:'flex',gap:4}}>
+                          {getIcon(sl.headline,sl.icon)}
+                          {(sl.bgImage||sl.uploadedBg)?'🖼️':''}
+                          {sl.mode==='story'?<span style={{color:'#555',fontSize:9}}>📱ستوري</span>:''}
+                        </div>
                       </div>
                       <button onClick={e=>{e.stopPropagation();const n=[...slides];n.splice(i,1);setSlides(n);setActive(Math.max(0,i===active?i-1:active))}} style={{background:'none',border:'none',color:'#333',width:26,cursor:'pointer',fontSize:13,flexShrink:0}}>✕</button>
                     </div>
                   ))}
-                  <button onClick={()=>{setSlides(p=>[...p,{headline:'**عنوان** جديد',body:'نص الشريحة...',handle:DEFAULT_HANDLE,textAlign:'middle',overlayOpacity:0.72}]);setActive(slides.length);setMPanel('preview')}} style={{width:'100%',background:'none',border:'1px dashed rgba(255,255,255,0.1)',borderRadius:10,color:'#444',fontFamily:"'Cairo',sans-serif",fontSize:13,padding:'9px',cursor:'pointer',marginTop:4}}>
-                    + إضافة شريحة
+                  <button onClick={()=>{setSlides(p=>[...p,{headline:'**عنوان** جديد',body:'نص الشريحة...',handle:'@5gates.bh',textAlign:'middle',overlayOpacity:0.72,mode:'carousel'}]);setActive(slides.length);setMPanel('preview')}} style={{width:'100%',background:'none',border:'1px dashed rgba(255,255,255,0.1)',borderRadius:10,color:'#444',fontFamily:"'Cairo',sans-serif",fontSize:13,padding:'9px',cursor:'pointer',marginTop:4}}>
+                    + كاروسيل
+                  </button>
+                  <button onClick={()=>{setSlides(p=>[...p,{headline:'**عنوان** جديد',body:'نص الشريحة...',handle:'@5gates.bh',textAlign:'middle',overlayOpacity:0.72,mode:'story'}]);setActive(slides.length);setMPanel('preview')}} style={{width:'100%',background:'none',border:'1px dashed rgba(100,100,255,0.2)',borderRadius:10,color:'#555',fontFamily:"'Cairo',sans-serif",fontSize:13,padding:'9px',cursor:'pointer',marginTop:6}}>
+                    + ستوري 📱
                   </button>
                   <div style={{marginTop:14,marginBottom:7,fontSize:9,fontWeight:800,letterSpacing:2,color:'#333',textTransform:'uppercase'}}>مواضيع سريعة</div>
                   {['أخطاء التدفق النقدي','ضريبة القيمة المضافة','نصائح ERP','تقييم الأعمال','المحاسبة الشهرية','نمو المشاريع الصغيرة'].map(tp=>(
@@ -692,21 +1000,27 @@ ${currentSlidesJson}
                   <button onClick={()=>setActive(Math.max(0,active-1))} disabled={active===0} style={{...btnD,width:32,height:32,padding:0,justifyContent:'center',opacity:active===0?.3:1,fontSize:18}}>‹</button>
                   <span style={{fontSize:13,color:'#555',fontWeight:800,flex:1,textAlign:'center'}}>{slides.length?`${active+1} / ${slides.length}`:'—'}</span>
                   <button onClick={()=>setActive(Math.min(slides.length-1,active+1))} disabled={active>=slides.length-1} style={{...btnD,width:32,height:32,padding:0,justifyContent:'center',opacity:active>=slides.length-1?.3:1,fontSize:18}}>›</button>
-                  {slides.length>0&&<button className="m-only" onClick={()=>setMPanel('design')} style={{...btnD,padding:'6px 10px',fontSize:12}}>✏️</button>}
+                  {slides.length>0&&(
+                    <>
+                      <button onClick={()=>setDragEditorOpen(true)} style={{...btnD,padding:'6px 10px',fontSize:11,color:'rgba(204,51,51,0.8)',borderColor:'rgba(204,51,51,0.2)'}} title="تحريك النصوص">✥ تحريك</button>
+                      <button className="m-only" onClick={()=>setMPanel('design')} style={{...btnD,padding:'6px 10px',fontSize:12}}>✏️</button>
+                    </>
+                  )}
                 </div>
-                <div style={{flex:1,overflow:'auto',display:'flex',alignItems:'center',justifyContent:'center',padding:'16px'}}>
+                <div style={{flex:1,overflow:'auto',display:'flex',alignItems:'center',justifyContent:'center',padding:'20px 14px',gap:12,flexWrap:'nowrap'}}>
                   {slides.length===0?(
                     <div style={{textAlign:'center',color:'#444',padding:20}}>
                       <div style={{fontSize:52,marginBottom:12}}>✦</div>
-                      <div style={{fontSize:15,color:'#555',fontWeight:800,marginBottom:16}}>ابدأ الكاروسيل</div>
-                      <button onClick={openAi} style={btnR}>✦ توليد AI</button>
+                      <div style={{fontSize:15,color:'#555',fontWeight:800,marginBottom:8}}>ابدأ الكاروسيل أو الستوري</div>
+                      <div style={{display:'flex',gap:8,justifyContent:'center',flexWrap:'wrap'}}>
+                        <button onClick={openAi} style={btnR}>✦ توليد AI</button>
+                        <button onClick={()=>setBrandingOpen(true)} style={{...btnD,color:'#CC3333',borderColor:'rgba(204,51,51,0.3)'}}>🎨 برندة</button>
+                      </div>
                     </div>
-                  ):(
-                    <SlideThumb
-                      key={`${active}-${theme}-${fs}-${slides[active]?.icon||''}-${slides[active]?.bgImage||''}-${slides[active]?.textAlign||''}-${slides[active]?.textX||0}-${slides[active]?.textY||0}`}
-                      slide={slides[active]} idx={active} total={slides.length}
-                      theme={theme} fs={fs} active={true} onClick={()=>{}} size={300}/>
-                  )}
+                  ):slides.map((sl,i)=>(
+                    <SlideThumb key={i+'-'+theme+'-'+fs+'-'+(sl.icon||'')+'-'+(sl.bgImage||'')+'-'+(sl.uploadedBg?'up':'')+'-'+(sl.textAlign||'')+'-'+(sl.headX||0)+'-'+(sl.headY||0)+'-'+(sl.bodyX||0)+'-'+(sl.bodyY||0)+'-'+(sl.mode||'carousel')}
+                      slide={sl} idx={i} total={slides.length} theme={theme} fs={fs} active={active===i} onClick={()=>setActive(i)} size={sl.mode==='story'?135:180}/>
+                  ))}
                 </div>
               </div>
 
@@ -728,25 +1042,49 @@ ${currentSlidesJson}
                   </Sec>
 
                   {slides.length>0&&<>
+
+                    {/* Slide mode toggle */}
+                    <Sec label="نوع الشريحة">
+                      <div style={{display:'flex',gap:0,background:'#111',borderRadius:10,padding:3,marginBottom:4}}>
+                        {(['carousel','story'] as const).map(m=>(
+                          <button key={m} onClick={()=>upd({mode:m})} style={{flex:1,padding:'8px',background:(sl?.mode||'carousel')===m?'#CC3333':'transparent',border:'none',borderRadius:8,color:(sl?.mode||'carousel')===m?'#fff':'#444',fontFamily:"'Cairo',sans-serif",fontSize:12,fontWeight:800,cursor:'pointer',transition:'all .15s',WebkitTapHighlightColor:'transparent'}}>
+                            {m==='carousel'?'🎠 كاروسيل':'📱 ستوري'}
+                          </button>
+                        ))}
+                      </div>
+                    </Sec>
+
                     <Sec label="صورة الخلفية 🖼️">
+                      {/* User upload button */}
+                      <input ref={uploadBgRef} type="file" accept="image/*" onChange={handleBgUpload} style={{display:'none'}}/>
+                      <button onClick={()=>uploadBgRef.current?.click()} style={{width:'100%',background:sl?.uploadedBg?'rgba(204,51,51,0.08)':'#111',border:`1px dashed ${sl?.uploadedBg?'#CC3333':'rgba(255,255,255,0.12)'}`,borderRadius:10,padding:'10px',cursor:'pointer',color:sl?.uploadedBg?'#CC3333':'#444',fontFamily:"'Cairo',sans-serif",fontSize:12,display:'flex',alignItems:'center',justifyContent:'center',gap:6,marginBottom:8,fontWeight:700}}>
+                        {sl?.uploadedBg ? '🖼️ صورتك المرفوعة ✓ (غيّر)' : '⬆️ ارفع صورتك'}
+                      </button>
+                      {sl?.uploadedBg && (
+                        <button onClick={()=>upd({uploadedBg:undefined})} style={{...btnD,width:'100%',justifyContent:'center',fontSize:11,color:'#ff5555',marginBottom:8}}>✕ حذف الصورة المرفوعة</button>
+                      )}
                       <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:5,marginBottom:sl?.bgImage?8:0}}>
                         {BG_IMAGES.map((bg,i)=>(
-                          <div key={i} onClick={()=>upd({bgImage:bg.url||undefined})}
-                            style={{aspectRatio:'1',borderRadius:7,overflow:'hidden',cursor:'pointer',border:`2px solid ${(sl?.bgImage||'')===(bg.url)?'#CC3333':'transparent'}`,background:'#111',position:'relative'}}>
+                          <div key={i} onClick={()=>upd({bgImage:bg.url||undefined,uploadedBg:undefined})}
+                            style={{aspectRatio:'1',borderRadius:7,overflow:'hidden',cursor:'pointer',border:`2px solid ${!sl?.uploadedBg&&(sl?.bgImage||'')===(bg.url)?'#CC3333':'transparent'}`,background:'#111',position:'relative',opacity:sl?.uploadedBg?0.4:1}}>
                             {bg.url?<img src={bg.url} alt={bg.label} style={{width:'100%',height:'100%',objectFit:'cover'}} loading="lazy"/>
                               :<div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,color:'#333',fontFamily:"'Cairo',sans-serif",textAlign:'center',padding:2}}>✕<br/>بدون</div>}
-                            {(sl?.bgImage||'')===(bg.url)&&<div style={{position:'absolute',top:2,right:2,width:12,height:12,background:'#CC3333',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:7,color:'#fff'}}>✓</div>}
+                            {!sl?.uploadedBg&&(sl?.bgImage||'')===(bg.url)&&<div style={{position:'absolute',top:2,right:2,width:12,height:12,background:'#CC3333',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:7,color:'#fff'}}>✓</div>}
                           </div>
                         ))}
                       </div>
-                      {sl?.bgImage&&<>
+                      {(sl?.bgImage||sl?.uploadedBg)&&<>
                         <div style={{fontSize:9,color:'#444',marginBottom:4,marginTop:4}}>شفافية التعتيم — {Math.round((sl.overlayOpacity??0.72)*100)}%</div>
                         <input type="range" min="0.2" max="0.95" step="0.05" value={sl.overlayOpacity??0.72} onChange={e=>upd({overlayOpacity:+e.target.value})} style={{width:'100%',accentColor:'#CC3333'}}/>
                       </>}
                     </Sec>
 
                     <Sec label="موضع النص 🎯">
-                      <div style={{fontSize:10,color:'#444',marginBottom:6}}>الموضع العمودي</div>
+                      {/* Drag editor button */}
+                      <button onClick={()=>setDragEditorOpen(true)} style={{...btnR,width:'100%',justifyContent:'center',marginBottom:10,fontSize:12,padding:'10px',background:'linear-gradient(135deg,rgba(204,51,51,0.8),rgba(204,51,51,0.5))',boxShadow:'none',border:'1px solid rgba(204,51,51,0.4)'}}>
+                        ✥ فتح محرر السحب والإفلات
+                      </button>
+                      <div style={{fontSize:10,color:'#444',marginBottom:6}}>الموضع العمودي السريع</div>
                       <div style={{display:'flex',gap:6,marginBottom:10}}>
                         {(['top','middle','bottom'] as TextAlign[]).map(p=>(
                           <button key={p} onClick={()=>upd({textAlign:p})} style={{flex:1,padding:'7px 4px',borderRadius:8,border:`1px solid ${sl?.textAlign===p?'#CC3333':'rgba(255,255,255,0.1)'}`,background:sl?.textAlign===p?'rgba(204,51,51,0.15)':'#222',color:sl?.textAlign===p?'#CC3333':'#555',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:"'Cairo',sans-serif",WebkitTapHighlightColor:'transparent'}}>
@@ -754,18 +1092,15 @@ ${currentSlidesJson}
                           </button>
                         ))}
                       </div>
-                      <div style={{fontSize:9,color:'#444',marginBottom:3}}>ضبط أفقي {sl?.textX??0}%</div>
-                      <input type="range" min="-50" max="50" step="5" value={sl?.textX??0} onChange={e=>upd({textX:+e.target.value})} style={{width:'100%',accentColor:'#CC3333',marginBottom:8}}/>
-                      <div style={{fontSize:9,color:'#444',marginBottom:3}}>ضبط عمودي {sl?.textY??0}%</div>
-                      <input type="range" min="-50" max="50" step="5" value={sl?.textY??0} onChange={e=>upd({textY:+e.target.value})} style={{width:'100%',accentColor:'#CC3333',marginBottom:6}}/>
-                      <button onClick={()=>upd({textX:0,textY:0,textAlign:'middle'})} style={{...btnD,fontSize:11,padding:'5px 10px'}}>↺ إعادة ضبط</button>
+                      <div style={{fontSize:9,color:'#333',marginBottom:2}}>العنوان: {sl?.headX??50}%, {sl?.headY??38}% · النص: {sl?.bodyX??50}%, {sl?.bodyY??58}%</div>
+                      <button onClick={()=>upd({headX:50,headY:38,bodyX:50,bodyY:58,textX:0,textY:0,textAlign:'middle'})} style={{...btnD,fontSize:11,padding:'5px 10px',marginTop:4}}>↺ إعادة ضبط</button>
                     </Sec>
 
                     <Sec label={`تعديل الشريحة ${active+1}`}>
                       <div style={{fontSize:10,color:'#444',marginBottom:4}}>العنوان <span style={{color:'#333'}}>(**أحمر** · ***أصفر***)</span></div>
                       <textarea value={eHead} onChange={e=>setEHead(e.target.value)} rows={2} style={{...inp,resize:'none',lineHeight:1.8,marginBottom:10,fontSize:12}}/>
-                      <div style={{fontSize:10,color:'#444',marginBottom:4}}>النص <span style={{color:'#555',fontSize:9}}>(Enter = سطر جديد)</span></div>
-                      <textarea value={eBody} onChange={e=>setEBody(e.target.value)} rows={4} style={{...inp,resize:'vertical',lineHeight:1.8,marginBottom:10,fontSize:12}}/>
+                      <div style={{fontSize:10,color:'#444',marginBottom:4}}>النص</div>
+                      <textarea value={eBody} onChange={e=>setEBody(e.target.value)} rows={2} style={{...inp,resize:'none',lineHeight:1.8,marginBottom:10,fontSize:12}}/>
                       <div style={{fontSize:10,color:'#444',marginBottom:6}}>الأيقونة</div>
                       <div style={{display:'flex',flexWrap:'wrap',gap:5,marginBottom:10}}>
                         {Object.entries(ICONS).map(([k,v])=>(
@@ -800,7 +1135,6 @@ ${currentSlidesJson}
           </div>
         )}
 
-        {/* SAVED */}
         {tab==='saved'&&(
           <div style={{flex:1,overflow:'auto',padding:16}}>
             <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:18}}>
@@ -839,7 +1173,6 @@ ${currentSlidesJson}
           </div>
         )}
 
-        {/* QUEUE */}
         {tab==='queue'&&(
           <div style={{flex:1,overflow:'auto',padding:16}}>
             <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16}}>
@@ -871,7 +1204,6 @@ ${currentSlidesJson}
           </div>
         )}
 
-        {/* SETTINGS */}
         {tab==='settings'&&(
           <div style={{flex:1,overflow:'auto',padding:16}}>
             <h2 style={{fontFamily:"'Tajawal',sans-serif",fontWeight:900,fontSize:18,marginBottom:16}}>⚙️ الإعدادات</h2>
@@ -901,48 +1233,45 @@ ${currentSlidesJson}
         ))}
       </nav>
 
-      {/* ═══════════════════════════════════════
-          AI MODAL — 2-STEP: INPUT → CHAT
-      ═══════════════════════════════════════ */}
+      {/* AI MODAL */}
       {aiOpen&&(
         <div onClick={e=>{if(e.target===e.currentTarget)closeAi()}} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.88)',backdropFilter:'blur(18px)',zIndex:1000,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
           <div style={{background:'#1A1A1A',border:'1px solid rgba(255,255,255,0.1)',borderTop:'3px solid #CC3333',borderRadius:'20px 20px 0 0',width:'100%',maxWidth:600,maxHeight:'94dvh',display:'flex',flexDirection:'column'}}>
-
-            {/* Modal Header */}
             <div style={{padding:'16px 20px 12px',flexShrink:0}}>
               <div style={{width:36,height:4,background:'rgba(255,255,255,0.15)',borderRadius:2,margin:'0 auto 14px'}}/>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
                 <div style={{display:'flex',alignItems:'center',gap:10}}>
-                  {aiStep==='chat'&&(
-                    <button onClick={()=>setAiStep('input')} style={{...btnD,width:30,height:30,padding:0,justifyContent:'center',fontSize:14}}>←</button>
-                  )}
+                  {aiStep==='chat'&&<button onClick={()=>setAiStep('input')} style={{...btnD,width:30,height:30,padding:0,justifyContent:'center',fontSize:14}}>←</button>}
                   <div style={{fontFamily:"'Tajawal',sans-serif",fontWeight:900,fontSize:17}}>
                     {aiStep==='input'?'✦ توليد بالذكاء الاصطناعي':'💬 راجع وعدّل المحتوى'}
                   </div>
                 </div>
                 <button onClick={closeAi} style={{...btnD,width:32,height:32,padding:0,justifyContent:'center'}}>✕</button>
               </div>
-              {/* Post / Carousel toggle — only show on input step */}
               {aiStep==='input'&&(
-                <div style={{display:'flex',gap:0,marginTop:14,background:'#111',borderRadius:10,padding:3}}>
-                  {(['post','carousel'] as const).map(m=>(
-                    <button key={m} onClick={()=>setAiPostMode(m)} style={{flex:1,padding:'9px',background:aiPostMode===m?'#CC3333':'transparent',border:'none',borderRadius:8,color:aiPostMode===m?'#fff':'#444',fontFamily:"'Cairo',sans-serif",fontSize:13,fontWeight:800,cursor:'pointer',transition:'all .15s',WebkitTapHighlightColor:'transparent'}}>
-                      {m==='post'?'📸 بوست واحد':'🎠 كاروسيل'}
-                    </button>
-                  ))}
-                </div>
+                <>
+                  <div style={{display:'flex',gap:0,marginTop:14,background:'#111',borderRadius:10,padding:3}}>
+                    {(['post','carousel'] as const).map(m=>(
+                      <button key={m} onClick={()=>setAiPostMode(m)} style={{flex:1,padding:'9px',background:aiPostMode===m?'#CC3333':'transparent',border:'none',borderRadius:8,color:aiPostMode===m?'#fff':'#444',fontFamily:"'Cairo',sans-serif",fontSize:13,fontWeight:800,cursor:'pointer',transition:'all .15s',WebkitTapHighlightColor:'transparent'}}>
+                        {m==='post'?'📸 بوست واحد':'🎠 كاروسيل'}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Story / Carousel output format */}
+                  <div style={{display:'flex',gap:0,marginTop:8,background:'#111',borderRadius:10,padding:3}}>
+                    {(['carousel','story'] as const).map(m=>(
+                      <button key={m} onClick={()=>setAiSlideMode(m)} style={{flex:1,padding:'8px',background:aiSlideMode===m?'rgba(204,51,51,0.7)':'transparent',border:'none',borderRadius:8,color:aiSlideMode===m?'#fff':'#444',fontFamily:"'Cairo',sans-serif",fontSize:12,fontWeight:700,cursor:'pointer',transition:'all .15s',WebkitTapHighlightColor:'transparent'}}>
+                        {m==='carousel'?'🎠 تنسيق كاروسيل':'📱 تنسيق ستوري'}
+                      </button>
+                    ))}
+                  </div>
+                </>
               )}
-              {aiStep==='chat'&&(
-                <div style={{marginTop:8,fontSize:11,color:'#555',direction:'rtl'}}>
-                  اكتب تعديلاتك بالعربي ← AI يعدّل المحتوى ← اكتب <span style={{color:'#CC3333',fontWeight:800}}>تأكيد</span> للتحويل {aiPostMode==='post'?'لبوست بصري':'لكاروسيل بصري'}
-                </div>
-              )}
+              {aiStep==='chat'&&<div style={{marginTop:8,fontSize:11,color:'#555',direction:'rtl'}}>اكتب تعديلاتك بالعربي ← AI يعدّل المحتوى ← اكتب <span style={{color:'#CC3333',fontWeight:800}}>تأكيد</span> للتحويل</div>}
             </div>
 
-            {/* ── STEP 1: INPUT ── */}
             {aiStep==='input'&&(
               <div style={{flex:1,overflowY:'auto',padding:'0 20px 20px'}}>
-                {/* Mode toggle */}
                 <div style={{display:'flex',gap:0,marginBottom:16,background:'#111',borderRadius:10,padding:3}}>
                   {(['topic','manual'] as const).map(m=>(
                     <button key={m} onClick={()=>setAiInputMode(m)} style={{flex:1,padding:'8px',background:aiInputMode===m?'#CC3333':'transparent',border:'none',borderRadius:8,color:aiInputMode===m?'#fff':'#444',fontFamily:"'Cairo',sans-serif",fontSize:12,fontWeight:700,cursor:'pointer',transition:'all .15s',WebkitTapHighlightColor:'transparent'}}>
@@ -950,20 +1279,18 @@ ${currentSlidesJson}
                     </button>
                   ))}
                 </div>
-
                 {aiInputMode==='topic'?(
                   <>
-                    <textarea value={aiPrompt} onChange={e=>setAiPrompt(e.target.value)} rows={3} style={{...inp,fontSize:14,resize:'none',lineHeight:1.8,marginBottom:10}} placeholder="مثال: أهم أخطاء تدمر التدفق النقدي... / Top 5 cash flow mistakes..."/>
+                    <textarea value={aiPrompt} onChange={e=>setAiPrompt(e.target.value)} rows={3} style={{...inp,fontSize:14,resize:'none',lineHeight:1.8,marginBottom:10}} placeholder="مثال: أهم أخطاء تدمر التدفق النقدي للشركات الصغيرة..."/>
                     <div style={{display:'flex',flexWrap:'wrap',gap:5,marginBottom:14}}>
-                      {['أهم ٥ أخطاء في التدفق النقدي','لماذا تفشل الشركات في المحاسبة','نصائح ERP للشركات','Top 5 Cash Flow Mistakes','Why Businesses Fail at Accounting'].map(p=>(
-                        <div key={p} onClick={()=>setAiPrompt(p)} style={{background:'#222',border:'1px solid rgba(255,255,255,0.08)',borderRadius:20,padding:'5px 12px',fontSize:11,color:'#555',cursor:'pointer',fontFamily:"'Cairo',sans-serif"}}>{p.slice(0,26)}{p.length>26?'…':''}</div>
+                      {['أهم ٥ أخطاء في التدفق النقدي','لماذا تفشل الشركات في المحاسبة','كيف تعرف أن شركتك تحتاج ERP'].map(p=>(
+                        <div key={p} onClick={()=>setAiPrompt(p)} style={{background:'#222',border:'1px solid rgba(255,255,255,0.08)',borderRadius:20,padding:'5px 12px',fontSize:11,color:'#555',cursor:'pointer',fontFamily:"'Cairo',sans-serif"}}>{p.slice(0,22)}…</div>
                       ))}
                     </div>
                   </>
                 ):(
                   <textarea value={aiManualText} onChange={e=>setAiManualText(e.target.value)} rows={6} style={{...inp,fontSize:13,resize:'none',lineHeight:1.8,marginBottom:14}} placeholder="الصق نصك هنا، AI سيحوّله لشرائح منسّقة..."/>
                 )}
-
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
                   {aiPostMode==='carousel'
                     ?<div><div style={{fontSize:10,color:'#444',marginBottom:4}}>الشرائح</div><select value={aiNum} onChange={e=>setAiNum(e.target.value)} style={inp}>{[['4','٤'],['5','٥'],['6','٦'],['7','٧']].map(([v,l])=><option key={v} value={v}>{l} شرائح</option>)}</select></div>
@@ -972,25 +1299,20 @@ ${currentSlidesJson}
                   <div><div style={{fontSize:10,color:'#444',marginBottom:4}}>اللغة</div><select value={aiLang} onChange={e=>setAiLang(e.target.value)} style={inp}><option value="ar">🇸🇦 عربي</option><option value="en">🇬🇧 English</option></select></div>
                 </div>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:20}}>
-                  <div><div style={{fontSize:10,color:'#444',marginBottom:4}}>النوع / Type</div><select value={aiType} onChange={e=>setAiType(e.target.value)} style={inp}>{[['hook','🔥 Hook / هوك'],['tips','💡 Tips / نصائح'],['warning','⚠️ Warnings / تحذيرات'],['facts','📊 Facts / حقائق'],['steps','📋 Steps / خطوات'],['contrast','⚡ Compare / مقارنة'],['myths','❌ Myths / خرافات']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
-                  <div><div style={{fontSize:10,color:'#444',marginBottom:4}}>الأسلوب / Tone</div><select value={aiTone} onChange={e=>setAiTone(e.target.value)} style={inp}>{[['bold','🔥 Bold / جريء'],['direct','⚡ Direct / مباشر'],['question','❓ Questions / أسئلة'],['expert','🎩 Expert / خبير']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
+                  <div><div style={{fontSize:10,color:'#444',marginBottom:4}}>النوع</div><select value={aiType} onChange={e=>setAiType(e.target.value)} style={inp}>{[['hook','🔥 هوك'],['tips','💡 نصائح'],['warning','⚠️ تحذيرات'],['facts','📊 حقائق'],['steps','📋 خطوات'],['contrast','⚡ مقارنة'],['myths','❌ خرافات']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
+                  <div><div style={{fontSize:10,color:'#444',marginBottom:4}}>الأسلوب</div><select value={aiTone} onChange={e=>setAiTone(e.target.value)} style={inp}>{[['bold','🔥 جريء'],['direct','⚡ مباشر'],['question','❓ أسئلة'],['expert','🎩 خبير']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
                 </div>
-
                 <div style={{display:'flex',gap:10}}>
                   <button onClick={closeAi} style={{...btnD,flex:1,justifyContent:'center'}}>إلغاء</button>
                   <button onClick={startGeneration} disabled={chatLoading} style={{...btnR,flex:2,justifyContent:'center',opacity:chatLoading?.6:1}}>
-                    {chatLoading
-                      ?<><span style={{width:14,height:14,border:'2px solid rgba(255,255,255,0.2)',borderTopColor:'#fff',borderRadius:'50%',animation:'spin .6s linear infinite',display:'inline-block'}}/> يولّد…</>
-                      :'✦ عرض المقترح'}
+                    {chatLoading?<><span style={{width:14,height:14,border:'2px solid rgba(255,255,255,0.2)',borderTopColor:'#fff',borderRadius:'50%',animation:'spin .6s linear infinite',display:'inline-block'}}/> يولّد…</>:'✦ عرض المقترح'}
                   </button>
                 </div>
               </div>
             )}
 
-            {/* ── STEP 2: CHAT ── */}
             {aiStep==='chat'&&(
               <>
-                {/* Chat messages + slide previews */}
                 <div style={{flex:1,overflowY:'auto',padding:'0 16px'}}>
                   {chatMsgs.map((msg,i)=>(
                     <div key={i} style={{marginBottom:14,direction:'rtl'}}>
@@ -1004,61 +1326,32 @@ ${currentSlidesJson}
                             <div style={{width:22,height:22,background:'#CC3333',borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:900,color:'#fff',flexShrink:0}}>5G</div>
                             <span style={{fontSize:10,color:'#CC3333',fontWeight:800}}>5GATES AI</span>
                           </div>
-                          {/* Show slide preview cards for first assistant message and after updates */}
                           {previewSlides.length>0 && (i===1||(i===chatMsgs.length-1&&msg.role==='assistant')) && (
-                            <div style={{marginBottom:10}}>
-                              {previewSlides.map((sl,si)=>(
-                                <SlidePreviewCard key={si} slide={sl} idx={si}/>
-                              ))}
-                            </div>
+                            <div style={{marginBottom:10}}>{previewSlides.map((sl,si)=><SlidePreviewCard key={si} slide={sl} idx={si}/>)}</div>
                           )}
-                          {/* Show the text part of assistant message (excluding slide content lines) */}
                           <div style={{background:'#222',border:'1px solid rgba(255,255,255,0.07)',borderRadius:'4px 12px 12px 12px',padding:'9px 13px',fontSize:12,color:'rgba(240,237,232,0.7)',lineHeight:1.8,direction:'rtl',whiteSpace:'pre-wrap'}}>
-                            {/* Show only the last part after --- divider */}
-                            {msg.content.includes('---')
-                              ? msg.content.split('---').slice(-1)[0].trim()
-                              : msg.content.replace(/\*\*شريحة \d+:\*\*.+\n?.*/g,'').trim()
-                            }
+                            {msg.content.includes('---') ? msg.content.split('---').slice(-1)[0].trim() : msg.content.replace(/\*\*شريحة \d+:\*\*.+\n?.*/g,'').trim()}
                           </div>
                         </div>
                       )}
                     </div>
                   ))}
-
                   {chatLoading&&(
                     <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 0',direction:'rtl'}}>
                       <div style={{width:22,height:22,background:'#CC3333',borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:900,color:'#fff',flexShrink:0}}>5G</div>
-                      <div style={{display:'flex',gap:4}}>
-                        {[0,1,2].map(d=>(
-                          <div key={d} style={{width:7,height:7,background:'#CC3333',borderRadius:'50%',animation:`bounce .9s ${d*0.2}s ease-in-out infinite`}}/>
-                        ))}
-                      </div>
+                      <div style={{display:'flex',gap:4}}>{[0,1,2].map(d=><div key={d} style={{width:7,height:7,background:'#CC3333',borderRadius:'50%',animation:`bounce .9s ${d*0.2}s ease-in-out infinite`}}/>)}</div>
                     </div>
                   )}
                   <div ref={chatBottomRef}/>
                 </div>
-
-                {/* Chat input + confirm */}
                 <div style={{padding:'12px 16px 16px',borderTop:'1px solid rgba(255,255,255,0.07)',flexShrink:0}}>
                   <div style={{display:'flex',gap:8,marginBottom:10}}>
-                    <input
-                      value={chatInput}
-                      onChange={e=>setChatInput(e.target.value)}
-                      onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&!chatLoading&&sendChat()}
-                      placeholder="اطلب تعديلاً... (مثال: اختصر الشريحة 3، غيّر النبرة)"
-                      style={{...inp,flex:1,fontSize:13}}
-                      disabled={chatLoading}
-                    />
+                    <input value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&!chatLoading&&sendChat()} placeholder="اطلب تعديلاً..." style={{...inp,flex:1,fontSize:13}} disabled={chatLoading}/>
                     <button onClick={sendChat} disabled={chatLoading||!chatInput.trim()} style={{...btnD,width:40,height:40,padding:0,justifyContent:'center',fontSize:18,opacity:(chatLoading||!chatInput.trim())?.4:1}}>↑</button>
                   </div>
-                  <button
-                    onClick={()=>{setChatInput('تأكيد');setTimeout(sendChat,50)}}
-                    disabled={confirming||previewSlides.length===0}
-                    style={{...btnR,width:'100%',justifyContent:'center',fontSize:14,padding:'13px',opacity:confirming?.6:1,background:'linear-gradient(135deg,#CC3333,#FF4444)',boxShadow:'0 4px 20px rgba(204,51,51,0.45)'}}
-                  >
-                    {confirming
-                      ?<><span style={{width:14,height:14,border:'2px solid rgba(255,255,255,0.3)',borderTopColor:'#fff',borderRadius:'50%',animation:'spin .6s linear infinite',display:'inline-block'}}/> جاري التحويل…</>
-                      :'✦ تأكيد — تحويل '+(aiPostMode==='post'?'لبوست بصري':'لكاروسيل بصري')}
+                  <button onClick={()=>{setChatInput('تأكيد');setTimeout(sendChat,50)}} disabled={confirming||previewSlides.length===0}
+                    style={{...btnR,width:'100%',justifyContent:'center',fontSize:14,padding:'13px',opacity:confirming?.6:1,background:'linear-gradient(135deg,#CC3333,#FF4444)',boxShadow:'0 4px 20px rgba(204,51,51,0.45)'}}>
+                    {confirming?<><span style={{width:14,height:14,border:'2px solid rgba(255,255,255,0.3)',borderTopColor:'#fff',borderRadius:'50%',animation:'spin .6s linear infinite',display:'inline-block'}}/> جاري التحويل…</>:'✦ تأكيد — تحويل '+(aiPostMode==='post'?'لبوست بصري':'لكاروسيل بصري')}
                   </button>
                 </div>
               </>
@@ -1082,42 +1375,34 @@ ${currentSlidesJson}
         </div>
       )}
 
-      {/* DOWNLOAD MODAL — selective JPG or PDF */}
-      {dlOpen&&(
-        <div onClick={e=>{if(e.target===e.currentTarget)setDlOpen(false)}} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.88)',backdropFilter:'blur(16px)',zIndex:1000,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
-          <div style={{background:'#1A1A1A',border:'1px solid rgba(255,255,255,0.1)',borderTop:'3px solid #CC3333',borderRadius:'20px 20px 0 0',width:'100%',maxWidth:540,maxHeight:'88dvh',display:'flex',flexDirection:'column'}}>
-            <div style={{padding:'18px 20px 10px',flexShrink:0}}>
-              <div style={{width:36,height:4,background:'rgba(255,255,255,0.15)',borderRadius:2,margin:'0 auto 14px'}}/>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}}>
-                <div style={{fontFamily:"'Tajawal',sans-serif",fontWeight:900,fontSize:17}}>⬇️ اختر الشرائح للتحميل</div>
-                <button onClick={()=>setDlOpen(false)} style={{...btnD,width:32,height:32,padding:0,justifyContent:'center'}}>✕</button>
-              </div>
-            </div>
-            <div style={{padding:'0 20px 10px',flexShrink:0,display:'flex',gap:8,alignItems:'center'}}>
-              <button onClick={()=>setDlSel(new Set(slides.map((_,i)=>i)))} style={{...btnD,fontSize:11,padding:'5px 12px'}}>✓ الكل</button>
-              <button onClick={()=>setDlSel(new Set())} style={{...btnD,fontSize:11,padding:'5px 12px'}}>✕ إلغاء</button>
-              <span style={{marginRight:'auto',fontSize:11,color:'#555'}}>{dlSel.size} / {slides.length} مختار</span>
-            </div>
-            <div style={{flex:1,overflowY:'auto',padding:'0 20px 10px'}}>
-              {slides.map((sl,i)=>(
-                <div key={i} onClick={()=>{const s=new Set(dlSel);s.has(i)?s.delete(i):s.add(i);setDlSel(s)}}
-                  style={{display:'flex',alignItems:'center',gap:10,padding:'9px 10px',borderRadius:10,marginBottom:6,cursor:'pointer',background:dlSel.has(i)?'rgba(204,51,51,0.08)':'#222',border:`1px solid ${dlSel.has(i)?'#CC3333':'rgba(255,255,255,0.07)'}`,userSelect:'none'}}>
-                  <div style={{width:22,height:22,borderRadius:6,border:`2px solid ${dlSel.has(i)?'#CC3333':'#444'}`,background:dlSel.has(i)?'#CC3333':'transparent',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:12,color:'#fff',fontWeight:800}}>{dlSel.has(i)?'✓':''}</div>
-                  <div style={{width:22,height:22,background:'#2A2A2A',borderRadius:5,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:800,color:'#666',flexShrink:0}}>{i+1}</div>
-                  <div style={{flex:1,fontSize:12,color:'#F0EDE8',direction:'rtl',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{sl.headline.replace(/\*+/g,'')||`شريحة ${i+1}`}</div>
-                </div>
-              ))}
-            </div>
-            <div style={{padding:'12px 20px 20px',flexShrink:0,display:'flex',gap:10,borderTop:'1px solid rgba(255,255,255,0.07)'}}>
-              <button onClick={()=>doDownload(false)} disabled={dlLoading||dlSel.size===0} style={{...btnD,flex:1,justifyContent:'center',fontSize:12,opacity:(dlLoading||dlSel.size===0)?.4:1}}>
-                🖼️ JPG ({dlSel.size})
-              </button>
-              <button onClick={()=>doDownload(true)} disabled={dlLoading||dlSel.size===0} style={{...btnR,flex:1,justifyContent:'center',fontSize:12,opacity:(dlLoading||dlSel.size===0)?.4:1}}>
-                📄 PDF ({dlSel.size})
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* DRAG TEXT EDITOR */}
+      {dragEditorOpen && sl && (
+        <DragEditor
+          slide={sl}
+          theme={theme}
+          fs={fs}
+          onSave={updates => upd(updates)}
+          onClose={() => setDragEditorOpen(false)}
+        />
+      )}
+
+      {/* AI BRANDING MODAL */}
+      {brandingOpen && (
+        <AiBrandingModal
+          theme={theme}
+          onClose={() => setBrandingOpen(false)}
+          onApply={newSlide => {
+            setSlides(p => [...p, {
+              ...newSlide,
+              headline: newSlide.headline || '**عنوان** الشريحة',
+              body: newSlide.body || '',
+              handle: '@5gates.bh',
+            } as Slide])
+            setActive(slides.length)
+            setMPanel('preview')
+            showToast('✦ تم إضافة شريحة مبراندة!')
+          }}
+        />
       )}
 
       {toast&&<div style={{position:'fixed',bottom:72,left:'50%',transform:'translateX(-50%)',background:'#1A1A1A',border:'1px solid rgba(255,255,255,0.12)',borderRight:'3px solid #CC3333',color:'#F0EDE8',padding:'10px 20px',borderRadius:10,fontSize:13,zIndex:9999,boxShadow:'0 8px 28px rgba(0,0,0,0.7)',whiteSpace:'nowrap',fontFamily:"'Cairo',sans-serif"}}>{toast}</div>}
