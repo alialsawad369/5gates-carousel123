@@ -9,20 +9,34 @@ type Slide = {
   uploadedBg?:string; // base64 user-uploaded image
   mode?:'carousel'|'story'; // story = 9:16
 }
-type Theme = 'dark'|'darker'|'white'|'cream'|'darkred'|'charcoal'
+type Theme = 'dark'|'darker'|'white'|'cream'|'darkred'|'charcoal'|'bizbay'|'bizbay_light'
 type PostStatus = 'scheduled'|'published'|'failed'|'draft'|'processing'
+
+// Brand config per theme
+const BRAND_META: Record<Theme,{name:string;handle:string;isBizbay:boolean}> = {
+  dark:        {name:'5GATES', handle:'@5gates.bh', isBizbay:false},
+  darker:      {name:'5GATES', handle:'@5gates.bh', isBizbay:false},
+  white:       {name:'5GATES', handle:'@5gates.bh', isBizbay:false},
+  cream:       {name:'5GATES', handle:'@5gates.bh', isBizbay:false},
+  darkred:     {name:'5GATES', handle:'@5gates.bh', isBizbay:false},
+  charcoal:    {name:'5GATES', handle:'@5gates.bh', isBizbay:false},
+  bizbay:      {name:'bizbay', handle:'@mybizbay',  isBizbay:true},
+  bizbay_light:{name:'bizbay', handle:'@mybizbay',  isBizbay:true},
+}
 type SavedCarousel = { name:string; slides:Slide[]; theme:Theme; fs:number; date:string; caption:string }
 
 type ChatMsg = { role:'user'|'assistant'; content:string }
 type AiStep = 'input'|'chat'|'done'
 
 const T: Record<Theme,{bg:string;text:string;sub:string;brand:string;hl:string;label:string}> = {
-  dark:     {bg:'#111111',text:'#F0EDE8',sub:'rgba(240,237,232,0.68)',brand:'rgba(240,237,232,0.35)',hl:'#CC3333',label:'Dark'},
-  darker:   {bg:'#050505',text:'#F5F5F5',sub:'rgba(245,245,245,0.60)',brand:'rgba(245,245,245,0.30)',hl:'#CC3333',label:'Black'},
-  white:    {bg:'#FFFFFF',text:'#111111',sub:'rgba(17,17,17,0.62)',   brand:'rgba(17,17,17,0.35)',   hl:'#CC3333',label:'White'},
-  cream:    {bg:'#F5F0E8',text:'#111111',sub:'rgba(17,17,17,0.58)',   brand:'rgba(17,17,17,0.32)',   hl:'#CC3333',label:'Cream'},
-  darkred:  {bg:'#180404',text:'#FFF0F0',sub:'rgba(255,240,240,0.60)',brand:'rgba(255,240,240,0.30)',hl:'#FF5555',label:'Red'},
-  charcoal: {bg:'#1C1C1C',text:'#EDEDED',sub:'rgba(237,237,237,0.62)',brand:'rgba(237,237,237,0.32)',hl:'#CC3333',label:'Charcoal'},
+  dark:        {bg:'#111111',text:'#F0EDE8',sub:'rgba(240,237,232,0.68)',brand:'rgba(240,237,232,0.35)',hl:'#CC3333',label:'Dark'},
+  darker:      {bg:'#050505',text:'#F5F5F5',sub:'rgba(245,245,245,0.60)',brand:'rgba(245,245,245,0.30)',hl:'#CC3333',label:'Black'},
+  white:       {bg:'#FFFFFF',text:'#111111',sub:'rgba(17,17,17,0.62)',   brand:'rgba(17,17,17,0.35)',   hl:'#CC3333',label:'White'},
+  cream:       {bg:'#F5F0E8',text:'#111111',sub:'rgba(17,17,17,0.58)',   brand:'rgba(17,17,17,0.32)',   hl:'#CC3333',label:'Cream'},
+  darkred:     {bg:'#180404',text:'#FFF0F0',sub:'rgba(255,240,240,0.60)',brand:'rgba(255,240,240,0.30)',hl:'#FF5555',label:'Red'},
+  charcoal:    {bg:'#1C1C1C',text:'#EDEDED',sub:'rgba(237,237,237,0.62)',brand:'rgba(237,237,237,0.32)',hl:'#CC3333',label:'Charcoal'},
+  bizbay:      {bg:'#0D0D0D',text:'#FFFFFF', sub:'rgba(255,255,255,0.65)',brand:'rgba(0,188,212,0.7)',  hl:'#00BCD4',label:'Bizbay 🌊'},
+  bizbay_light:{bg:'#FFFFFF',text:'#0D0D0D', sub:'rgba(13,13,13,0.62)',  brand:'rgba(0,188,212,0.8)',  hl:'#00BCD4',label:'Bizbay ☀️'},
 }
 const ICONS: Record<string,string> = { money:'💰',chart:'📊',warning:'⚠️',rocket:'🚀',bulb:'💡',check:'✅',fire:'🔥',question:'❓',bank:'🏦',document:'📋',growth:'📈',tax:'🧾',erp:'🖥️',salary:'💳',trophy:'🏆',time:'⏰',loss:'📉',people:'👥' }
 const BG_IMAGES = [
@@ -88,18 +102,27 @@ async function renderSlide(slide:Slide,idx:number,total:number,theme:Theme,fontS
   }else{ ctx.fillStyle=t.bg; ctx.fillRect(0,0,W,CH) }
 
   const gr=ctx.createRadialGradient(W*1.1,-CH*0.1,0,W*1.1,-CH*0.1,W*0.9)
-  gr.addColorStop(0,theme==='darkred'?'rgba(204,51,51,0.5)':'rgba(204,51,51,0.25)')
+  const accentRgb = (theme==='bizbay'||theme==='bizbay_light') ? '0,188,212' : theme==='darkred' ? '204,51,51' : '204,51,51'
+  gr.addColorStop(0,`rgba(${accentRgb},0.25)`)
   gr.addColorStop(1,'transparent'); ctx.fillStyle=gr; ctx.fillRect(0,0,W,CH)
   ctx.fillStyle=t.hl; ctx.beginPath(); ctx.roundRect(W-195,CH*0.845,115,7,4); ctx.fill()
 
   // Force RTL direction on canvas context — fixes punctuation placement in Arabic
   ctx.direction = 'rtl'
 
+  const brand = BRAND_META[theme]
   const icon=getIcon(slide.headline,slide.icon)
   ctx.font=`${Math.round(160*fs)}px serif`; ctx.globalAlpha=0.12; ctx.textAlign='left'; ctx.textBaseline='top'; ctx.fillText(icon,60,CH*0.07); ctx.globalAlpha=1
   ctx.font=`${Math.round(88*fs)}px serif`; ctx.textAlign='right'; ctx.textBaseline='top'; ctx.fillText(icon,W-75,72)
-  ctx.font=`900 ${Math.round(30*fs)}px 'Tajawal','Cairo',sans-serif`
-  ctx.fillStyle=bgSrc?'rgba(255,255,255,0.5)':t.brand; ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText('5GATES',W/2,65)
+  // Brand watermark — bizbay uses lowercase italic, 5GATES uses bold caps
+  if(brand.isBizbay){
+    ctx.font=`italic 900 ${Math.round(34*fs)}px 'Arial',sans-serif`
+    ctx.fillStyle=bgSrc?'rgba(0,188,212,0.7)':t.brand
+  } else {
+    ctx.font=`900 ${Math.round(30*fs)}px 'Tajawal','Cairo',sans-serif`
+    ctx.fillStyle=bgSrc?'rgba(255,255,255,0.5)':t.brand
+  }
+  ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText(brand.name,W/2,65)
 
   // Headline position - use headX/headY if set, otherwise fall back to textX/textY
   const hxOff = (slide.headX ?? slide.textX ?? 0)/100*W*0.3
@@ -147,7 +170,7 @@ async function renderSlide(slide:Slide,idx:number,total:number,theme:Theme,fontS
 
   const fy=CH-110
   ctx.font=`700 ${Math.round(26*fs)}px 'Cairo',sans-serif`; ctx.fillStyle=bgSrc?'rgba(255,255,255,0.4)':t.brand
-  ctx.textAlign='right'; ctx.textBaseline='middle'; ctx.fillText(slide.handle||'@5gates.bh',W-80,fy+22)
+  ctx.textAlign='right'; ctx.textBaseline='middle'; ctx.fillText(slide.handle||brand.handle,W-80,fy+22)
   if(!isStory){
     const dc=Math.min(total,7),dw=14,aw=44,dh=14,dg=8; let dx=(W-(dc*dw+(dc-1)*dg+(aw-dw)))/2
     for(let d=0;d<dc;d++){
@@ -166,18 +189,26 @@ function drawThumb(slide:Slide,idx:number,total:number,theme:Theme,fs:number,can
   if((bgImg)&&(slide.bgImage||slide.uploadedBg)){ctx.drawImage(bgImg,0,0,W,H);ctx.fillStyle=`rgba(0,0,0,${slide.overlayOpacity??0.72})`;ctx.fillRect(0,0,W,H)}
   else{ctx.fillStyle=t.bg;ctx.fillRect(0,0,W,H)}
   const gr=ctx.createRadialGradient(W*1.1,-H*0.1,0,W*1.1,-H*0.1,W*0.9)
-  gr.addColorStop(0,theme==='darkred'?'rgba(204,51,51,0.5)':'rgba(204,51,51,0.25)')
+  const accentRgb2 = (theme==='bizbay'||theme==='bizbay_light') ? '0,188,212' : '204,51,51'
+  gr.addColorStop(0,`rgba(${accentRgb2},0.25)`)
   gr.addColorStop(1,'transparent'); ctx.fillStyle=gr; ctx.fillRect(0,0,W,H)
   ctx.fillStyle=t.hl; ctx.beginPath(); ctx.roundRect(W-195*W/1080,H*0.845,115*W/1080,7*H/1350,4); ctx.fill()
 
   // Force RTL direction on canvas context — fixes punctuation placement in Arabic
   ctx.direction = 'rtl'
 
+  const brand2 = BRAND_META[theme]
   ctx.font=`${Math.round(88*pfs)}px serif`; ctx.textAlign='right'; ctx.textBaseline='top'
   ctx.fillText(getIcon(slide.headline,slide.icon),W-75*W/1080,72*H/(isStory?1920:1350))
   const F="'Cairo','Tajawal',Arial,sans-serif"
-  ctx.font=`900 ${Math.round(30*pfs)}px ${F}`
-  ctx.fillStyle=(slide.bgImage||slide.uploadedBg)?'rgba(255,255,255,0.5)':t.brand; ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText('5GATES',W/2,65*H/(isStory?1920:1350))
+  if(brand2.isBizbay){
+    ctx.font=`italic 900 ${Math.round(30*pfs)}px Arial,sans-serif`
+    ctx.fillStyle=(slide.bgImage||slide.uploadedBg)?'rgba(0,188,212,0.7)':t.brand
+  } else {
+    ctx.font=`900 ${Math.round(30*pfs)}px ${F}`
+    ctx.fillStyle=(slide.bgImage||slide.uploadedBg)?'rgba(255,255,255,0.5)':t.brand
+  }
+  ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText(brand2.name,W/2,65*H/(isStory?1920:1350))
   const hxOff=(slide.headX??slide.textX??0)/100*W*0.3
   const hyOff=(slide.headY??slide.textY??0)/100*H*0.25
   const vPos=slide.textAlign??'middle'
@@ -716,10 +747,11 @@ export default function App(){
   const [aiLang,setAiLang]=useState('ar')
   const [aiType,setAiType]=useState('hook')
   const [aiTone,setAiTone]=useState('bold')
-  const [aiInputMode,setAiInputMode]=useState<'topic'|'manual'>('topic')
+  const [aiInputMode,setAiInputMode]=useState<'topic'|'manual'|'foundr'>('topic')
   const [aiPostMode,setAiPostMode]=useState<'post'|'carousel'>('carousel')
   const [aiSlideMode,setAiSlideMode]=useState<'carousel'|'story'>('carousel')
   const [aiManualText,setAiManualText]=useState('')
+  const [foundrText,setFoundrText]=useState('')
   const [chatMsgs,setChatMsgs]=useState<ChatMsg[]>([])
   const [chatInput,setChatInput]=useState('')
   const [chatLoading,setChatLoading]=useState(false)
@@ -760,7 +792,7 @@ export default function App(){
   }
 
   function resetAiModal(){
-    setAiStep('input'); setAiPrompt(''); setAiManualText(''); setChatMsgs([]); setChatInput(''); setPreviewSlides([]); setConfirming(false); setAiPostMode('carousel')
+    setAiStep('input'); setAiPrompt(''); setAiManualText(''); setFoundrText(''); setChatMsgs([]); setChatInput(''); setPreviewSlides([]); setConfirming(false); setAiPostMode('carousel')
   }
 
   function openAi(){setAiOpen(true); resetAiModal()}
@@ -772,10 +804,57 @@ export default function App(){
   }
 
   async function startGeneration(){
-    const topic = aiInputMode==='topic' ? aiPrompt.trim() : aiManualText.trim()
+    const isBizbayTheme = theme==='bizbay'||theme==='bizbay_light'
+    const brand = BRAND_META[theme]
+    const topic = aiInputMode==='topic' ? aiPrompt.trim()
+      : aiInputMode==='manual' ? aiManualText.trim()
+      : foundrText.trim()
     if(!topic){showToast('أدخل موضوعاً أو نصاً');return}
     setChatLoading(true)
     setAiStep('chat')
+
+    // For Foundr mode — use /api/chat to translate+adapt, then convert to slides
+    if(aiInputMode==='foundr'){
+      const userMsg: ChatMsg = { role:'user', content: `ترجمة Foundr:\n${topic}` }
+      setChatMsgs([userMsg])
+      try{
+        const brandName = brand.isBizbay ? 'Bizbay (منصة بيع وشراء الأعمال)' : '5GATES (استشارات محاسبية)'
+        const r = await fetch('/api/chat',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({
+            system: `أنت متخصص في إعادة صياغة محتوى انجليزي لسوشيال ميديا وتحويله لمحتوى عربي خليجي قوي لشركة ${brandName}.
+أسلوب المحتوى: جريء، مباشر، مثل Foundr — جمل قصيرة وقوية.
+اللغة: عربية خليجية واضحة.
+
+حوّل النص المدخل إلى ${aiPostMode==='post'?'شريحة واحدة':aiNum+' شرائح'} وأعد JSON فقط:
+\`\`\`json
+[{"headline":"العنوان القوي","body":"جملة دعم قصيرة"}]
+\`\`\``,
+            messages:[{role:'user',content:`حوّل هذا لمحتوى عربي لـ ${brandName}:\n\n${topic}`}]
+          })
+        })
+        const d = await r.json()
+        const aiReply = d.reply || d.content || d.message || ''
+        const parsed = parseSlidesFromText(aiReply)
+        if(parsed){
+          const generatedSlides: Slide[] = parsed.map((s:any)=>({
+            ...s, textAlign:'middle', overlayOpacity:0.72, mode:aiSlideMode,
+            handle: brand.handle
+          }))
+          setPreviewSlides(generatedSlides)
+          const previewText = generatedSlides.map((sl,i)=>`**شريحة ${i+1}:** ${sl.headline.replace(/\*+/g,'')}\n${sl.body||''}`).join('\n\n')
+          setChatMsgs([userMsg,{role:'assistant',content:`✦ تم التحويل لـ ${brand.name} (${generatedSlides.length} شرائح):\n\n${previewText}\n\n---\nعدّل أو اكتب **"تأكيد"**`}])
+        } else {
+          setChatMsgs([userMsg,{role:'assistant',content:aiReply||'حدث خطأ، حاول مجدداً'}])
+        }
+      }catch(e:any){
+        setChatMsgs(prev=>[...prev,{role:'assistant',content:`خطأ: ${e.message}`}])
+        setAiStep('input')
+      }finally{ setChatLoading(false) }
+      return
+    }
+
     const userMsg: ChatMsg = { role:'user', content: aiInputMode==='topic' ? `الموضوع: ${topic}` : `النص المدخل:\n${topic}` }
     setChatMsgs([userMsg])
     try{
@@ -981,10 +1060,10 @@ export default function App(){
                       <button onClick={e=>{e.stopPropagation();const n=[...slides];n.splice(i,1);setSlides(n);setActive(Math.max(0,i===active?i-1:active))}} style={{background:'none',border:'none',color:'#333',width:26,cursor:'pointer',fontSize:13,flexShrink:0}}>✕</button>
                     </div>
                   ))}
-                  <button onClick={()=>{setSlides(p=>[...p,{headline:'**عنوان** جديد',body:'نص الشريحة...',handle:'@5gates.bh',textAlign:'middle',overlayOpacity:0.72,mode:'carousel'}]);setActive(slides.length);setMPanel('preview')}} style={{width:'100%',background:'none',border:'1px dashed rgba(255,255,255,0.1)',borderRadius:10,color:'#444',fontFamily:"'Cairo',sans-serif",fontSize:13,padding:'9px',cursor:'pointer',marginTop:4}}>
+                  <button onClick={()=>{setSlides(p=>[...p,{headline:'**عنوان** جديد',body:'نص الشريحة...',handle:BRAND_META[theme].handle,textAlign:'middle',overlayOpacity:0.72,mode:'carousel'}]);setActive(slides.length);setMPanel('preview')}} style={{width:'100%',background:'none',border:'1px dashed rgba(255,255,255,0.1)',borderRadius:10,color:'#444',fontFamily:"'Cairo',sans-serif",fontSize:13,padding:'9px',cursor:'pointer',marginTop:4}}>
                     + كاروسيل
                   </button>
-                  <button onClick={()=>{setSlides(p=>[...p,{headline:'**عنوان** جديد',body:'نص الشريحة...',handle:'@5gates.bh',textAlign:'middle',overlayOpacity:0.72,mode:'story'}]);setActive(slides.length);setMPanel('preview')}} style={{width:'100%',background:'none',border:'1px dashed rgba(100,100,255,0.2)',borderRadius:10,color:'#555',fontFamily:"'Cairo',sans-serif",fontSize:13,padding:'9px',cursor:'pointer',marginTop:6}}>
+                  <button onClick={()=>{setSlides(p=>[...p,{headline:'**عنوان** جديد',body:'نص الشريحة...',handle:BRAND_META[theme].handle,textAlign:'middle',overlayOpacity:0.72,mode:'story'}]);setActive(slides.length);setMPanel('preview')}} style={{width:'100%',background:'none',border:'1px dashed rgba(100,100,255,0.2)',borderRadius:10,color:'#555',fontFamily:"'Cairo',sans-serif",fontSize:13,padding:'9px',cursor:'pointer',marginTop:6}}>
                     + ستوري 📱
                   </button>
                   <div style={{marginTop:14,marginBottom:7,fontSize:9,fontWeight:800,letterSpacing:2,color:'#333',textTransform:'uppercase'}}>مواضيع سريعة</div>
@@ -1273,9 +1352,9 @@ export default function App(){
             {aiStep==='input'&&(
               <div style={{flex:1,overflowY:'auto',padding:'0 20px 20px'}}>
                 <div style={{display:'flex',gap:0,marginBottom:16,background:'#111',borderRadius:10,padding:3}}>
-                  {(['topic','manual'] as const).map(m=>(
-                    <button key={m} onClick={()=>setAiInputMode(m)} style={{flex:1,padding:'8px',background:aiInputMode===m?'#CC3333':'transparent',border:'none',borderRadius:8,color:aiInputMode===m?'#fff':'#444',fontFamily:"'Cairo',sans-serif",fontSize:12,fontWeight:700,cursor:'pointer',transition:'all .15s',WebkitTapHighlightColor:'transparent'}}>
-                      {m==='topic'?'🎯 موضوع':'✍️ نص يدوي'}
+                  {(['topic','manual','foundr'] as const).map(m=>(
+                    <button key={m} onClick={()=>setAiInputMode(m)} style={{flex:1,padding:'8px 4px',background:aiInputMode===m?'#CC3333':'transparent',border:'none',borderRadius:8,color:aiInputMode===m?'#fff':'#444',fontFamily:"'Cairo',sans-serif",fontSize:11,fontWeight:700,cursor:'pointer',transition:'all .15s',WebkitTapHighlightColor:'transparent'}}>
+                      {m==='topic'?'🎯 موضوع':m==='manual'?'✍️ نص':'📋 Foundr'}
                     </button>
                   ))}
                 </div>
@@ -1288,8 +1367,33 @@ export default function App(){
                       ))}
                     </div>
                   </>
-                ):(
+                ):aiInputMode==='manual'?(
                   <textarea value={aiManualText} onChange={e=>setAiManualText(e.target.value)} rows={6} style={{...inp,fontSize:13,resize:'none',lineHeight:1.8,marginBottom:14}} placeholder="الصق نصك هنا، AI سيحوّله لشرائح منسّقة..."/>
+                ):(
+                  /* FOUNDR MODE */
+                  <div style={{marginBottom:14}}>
+                    <div style={{background:'rgba(0,188,212,0.06)',border:'1px solid rgba(0,188,212,0.2)',borderRadius:10,padding:'10px 12px',marginBottom:10,direction:'rtl'}}>
+                      <div style={{fontSize:11,color:'#00BCD4',fontWeight:800,marginBottom:4}}>📋 ترجمة Foundr → عربي</div>
+                      <div style={{fontSize:11,color:'#555',lineHeight:1.7}}>الصق أي بوست من Foundr أو أي محتوى إنجليزي → AI يترجمه ويكيّفه بالعربي الخليجي لـ <span style={{color:(theme==='bizbay'||theme==='bizbay_light')?'#00BCD4':'#CC3333',fontWeight:800}}>{BRAND_META[theme].name}</span></div>
+                    </div>
+                    <textarea
+                      value={foundrText}
+                      onChange={e=>setFoundrText(e.target.value)}
+                      rows={6}
+                      style={{...inp,fontSize:13,resize:'none',lineHeight:1.8,marginBottom:10,direction:'ltr',textAlign:'left'}}
+                      placeholder="Paste Foundr post here...&#10;&#10;e.g. 'The great idea is the easy part. Execution is everything. Most founders never start because they're waiting for the perfect moment.'"
+                    />
+                    <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
+                      {[
+                        'The great idea is the easy part.',
+                        'You only need one good product.',
+                        'Stop guessing. Start building.',
+                        'Growth requires looking stupid for a while.'
+                      ].map(p=>(
+                        <div key={p} onClick={()=>setFoundrText(p)} style={{background:'#1A1A1A',border:'1px solid rgba(0,188,212,0.15)',borderRadius:20,padding:'4px 10px',fontSize:10,color:'#555',cursor:'pointer',fontFamily:'monospace'}}>{p.slice(0,28)}…</div>
+                      ))}
+                    </div>
+                  </div>
                 )}
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
                   {aiPostMode==='carousel'
@@ -1304,8 +1408,9 @@ export default function App(){
                 </div>
                 <div style={{display:'flex',gap:10}}>
                   <button onClick={closeAi} style={{...btnD,flex:1,justifyContent:'center'}}>إلغاء</button>
-                  <button onClick={startGeneration} disabled={chatLoading} style={{...btnR,flex:2,justifyContent:'center',opacity:chatLoading?.6:1}}>
-                    {chatLoading?<><span style={{width:14,height:14,border:'2px solid rgba(255,255,255,0.2)',borderTopColor:'#fff',borderRadius:'50%',animation:'spin .6s linear infinite',display:'inline-block'}}/> يولّد…</>:'✦ عرض المقترح'}
+                  <button onClick={startGeneration} disabled={chatLoading} style={{...btnR,flex:2,justifyContent:'center',opacity:chatLoading?.6:1,background:aiInputMode==='foundr'?'linear-gradient(135deg,#00BCD4,#0097A7)':'#CC3333'}}>
+                    {chatLoading?<><span style={{width:14,height:14,border:'2px solid rgba(255,255,255,0.2)',borderTopColor:'#fff',borderRadius:'50%',animation:'spin .6s linear infinite',display:'inline-block'}}/> يولّد…</>
+                      :aiInputMode==='foundr'?'📋 ترجم وحوّل':'✦ عرض المقترح'}
                   </button>
                 </div>
               </div>
