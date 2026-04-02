@@ -132,40 +132,38 @@ async function renderSlide(slide:Slide,idx:number,total:number,theme:Theme,fontS
     ? (vPos==='top'?CH*0.15:vPos==='bottom'?CH*0.60:CH*0.32)
     : (vPos==='top'?CH*0.18:vPos==='bottom'?CH*0.55:CH*0.28)
 
-  const hs=Math.round(88*fs),lh=hs*1.32,tr=W-80+hxOff,mx=W-180
-  ctx.font=`900 ${hs}px 'Cairo',sans-serif`; ctx.textAlign='right'; ctx.textBaseline='top'
-  // Word-wrap: measure RTL words correctly by wrapping from right side
-  const plain=slide.headline.replace(/\*+/g,''),words=plain.split(' '),lines:string[]=[]; let cur=''
-  for(const w of words){const test=cur?cur+' '+w:w; if(ctx.measureText(test).width>mx&&cur){lines.push(cur);cur=w}else cur=test}
+  // Native RTL rendering — ctx.direction=rtl + textAlign=right handles Arabic bidi correctly
+  // This fixes punctuation placement. Strip ** markers (UI-only, not rendered on canvas).
+  const hs=Math.round(88*fs),lh=hs*1.32,mx=W-160,rx=W-80+hxOff
+  ctx.font=`900 ${hs}px 'Cairo',sans-serif`
+  ctx.textAlign='right'; ctx.textBaseline='top'
+  ctx.fillStyle=bgSrc?'#FFFFFF':t.text
+
+  const plain=slide.headline.replace(/\*+/g,'')
+  const words=plain.split(' '); const lines:string[]=[]; let cur=''
+  for(const w of words){
+    const test=cur?cur+' '+w:w
+    if(ctx.measureText(test).width>mx&&cur){lines.push(cur);cur=w}else cur=test
+  }
   if(cur)lines.push(cur)
   let ly=baseY+hyOff-(lines.length*lh)/2
-  for(const line of lines){
-    const segs=parseSegs(line.trim())
-    // With ctx.direction='rtl', we draw each segment by measuring width and positioning manually
-    // First pass: calculate total width of line to find start x
-    let totalW = 0
-    for(const s of segs){ ctx.font=`900 ${hs}px 'Cairo',sans-serif`; totalW += ctx.measureText(s.text).width }
-    let x = tr - totalW
-    for(const s of segs){
-      ctx.font=`900 ${hs}px 'Cairo',sans-serif`
-      ctx.fillStyle=s.color||(bgSrc?'#FFFFFF':t.text)
-      const sw=ctx.measureText(s.text).width
-      ctx.fillText(s.text,x,ly); x+=sw
-    }
-    ly+=lh
-  }
+  for(const line of lines){ ctx.fillText(line.trim(),rx,ly); ly+=lh }
 
   if(slide.body){
-    // Body position - use bodyX/bodyY if set
-    const bxOff = (slide.bodyX ?? slide.textX ?? 0)/100*W*0.3
-    const byOff = (slide.bodyY ?? slide.textY ?? 0)/100*CH*0.25
-    const bs=Math.round(42*fs); ctx.font=`500 ${bs}px 'Cairo',sans-serif`
-    ctx.fillStyle=bgSrc?'rgba(255,255,255,0.85)':t.sub; ctx.textAlign='right'; ctx.textBaseline='top'
-    const bw=slide.body.split(' '),bl:string[]=[]; let bc=''
-    for(const w of bw){const test=bc?bc+' '+w:w; if(ctx.measureText(test).width>mx&&bc){bl.push(bc);bc=w}else bc=test}
-    if(bc)bl.push(bc)
+    const bxOff=(slide.bodyX??slide.textX??0)/100*W*0.3
+    const byOff=(slide.bodyY??slide.textY??0)/100*CH*0.25
+    const bs=Math.round(42*fs)
+    ctx.font=`500 ${bs}px 'Cairo',sans-serif`
+    ctx.fillStyle=bgSrc?'rgba(255,255,255,0.85)':t.sub
+    ctx.textAlign='right'; ctx.textBaseline='top'
+    const bwords=slide.body.split(' '); const blines:string[]=[]; let bc=''
+    for(const w of bwords){
+      const test=bc?bc+' '+w:w
+      if(ctx.measureText(test).width>mx&&bc){blines.push(bc);bc=w}else bc=test
+    }
+    if(bc)blines.push(bc)
     let by=ly+34+byOff*0.2
-    for(const b of bl.slice(0,4)){ctx.fillText(b,tr+bxOff-hxOff,by);by+=bs*1.65}
+    for(const b of blines.slice(0,4)){ ctx.fillText(b,W-80+bxOff,by); by+=bs*1.65 }
   }
 
   const fy=CH-110
@@ -215,35 +213,37 @@ function drawThumb(slide:Slide,idx:number,total:number,theme:Theme,fs:number,can
   const baseY = isStory
     ? (vPos==='top'?H*0.15:vPos==='bottom'?H*0.60:H*0.32)
     : (vPos==='top'?H*0.18:vPos==='bottom'?H*0.55:H*0.28)
-  const hs=Math.round(88*pfs),lh=hs*1.32,tr=W*0.93+hxOff,mx=W*0.85
-  ctx.font=`900 ${hs}px ${F}`; ctx.textAlign='right'; ctx.textBaseline='top'
-  const plain=slide.headline.replace(/\*+/g,''),words=plain.split(' '),lines:string[]=[]; let cur=''
-  for(const w of words){const test=cur?cur+' '+w:w; if(ctx.measureText(test).width>mx&&cur){lines.push(cur);cur=w}else cur=test}
+  // Native RTL rendering — same approach as renderSlide
+  const hs=Math.round(88*pfs),lh=hs*1.32,mx=W*0.85,rx=W*0.93+hxOff
+  ctx.font=`900 ${hs}px ${F}`
+  ctx.textAlign='right'; ctx.textBaseline='top'
+  ctx.fillStyle=(slide.bgImage||slide.uploadedBg)?'#FFFFFF':t.text
+
+  const plain=slide.headline.replace(/\*+/g,'')
+  const words=plain.split(' '); const lines:string[]=[]; let cur=''
+  for(const w of words){
+    const test=cur?cur+' '+w:w
+    if(ctx.measureText(test).width>mx&&cur){lines.push(cur);cur=w}else cur=test
+  }
   if(cur)lines.push(cur)
   let ly=baseY+hyOff-(lines.length*lh)/2
-  for(const line of lines){
-    const segs=parseSegs(line.trim())
-    let totalW = 0
-    for(const s of segs){ ctx.font=`900 ${hs}px ${F}`; totalW += ctx.measureText(s.text).width }
-    let x = tr - totalW
-    for(const s of segs){
-      ctx.font=`900 ${hs}px ${F}`
-      ctx.fillStyle=s.color||((slide.bgImage||slide.uploadedBg)?'#FFFFFF':t.text)
-      const sw=ctx.measureText(s.text).width
-      ctx.fillText(s.text,x,ly); x+=sw
-    }
-    ly+=lh
-  }
+  for(const line of lines){ ctx.fillText(line.trim(),rx,ly); ly+=lh }
+
   if(slide.body){
     const bxOff=(slide.bodyX??slide.textX??0)/100*W*0.3
     const byOff=(slide.bodyY??slide.textY??0)/100*H*0.25
-    const bs=Math.round(42*pfs); ctx.font=`500 ${bs}px ${F}`
-    ctx.fillStyle=(slide.bgImage||slide.uploadedBg)?'rgba(255,255,255,0.85)':t.sub; ctx.textAlign='right'; ctx.textBaseline='top'
-    const bw=slide.body.split(' '),bl:string[]=[]; let bc=''
-    for(const w of bw){const test=bc?bc+' '+w:w; if(ctx.measureText(test).width>mx&&bc){bl.push(bc);bc=w}else bc=test}
-    if(bc)bl.push(bc)
+    const bs=Math.round(42*pfs)
+    ctx.font=`500 ${bs}px ${F}`
+    ctx.fillStyle=(slide.bgImage||slide.uploadedBg)?'rgba(255,255,255,0.85)':t.sub
+    ctx.textAlign='right'; ctx.textBaseline='top'
+    const bwords=slide.body.split(' '); const blines:string[]=[]; let bc=''
+    for(const w of bwords){
+      const test=bc?bc+' '+w:w
+      if(ctx.measureText(test).width>mx&&bc){blines.push(bc);bc=w}else bc=test
+    }
+    if(bc)blines.push(bc)
     let by=ly+Math.round(18*pfs)
-    for(const b of bl.slice(0,4)){ctx.fillText(b,tr+bxOff-hxOff,by);by+=bs*1.6}
+    for(const b of blines.slice(0,4)){ ctx.fillText(b,W*0.93+bxOff,by); by+=bs*1.6 }
   }
 }
 
@@ -536,72 +536,87 @@ function DragEditor({slide, theme, fs, onSave, onClose}: {
 }
 
 // ═══════════════════════════════════════════════════
-// AI BRANDING MODAL — upload image + describe → branded slide
+// IMAGE → AI VISION → ARABIC SLIDE MODAL
+// Upload any Foundr/inspiration post → AI reads it
+// → rewrites in Gulf Arabic → branded slide
 // ═══════════════════════════════════════════════════
-function AiBrandingModal({onClose, onApply, theme}: {
+function AiBrandingModal({onClose, onApply}: {
   onClose: () => void;
   onApply: (slide: Partial<Slide>) => void;
-  theme: Theme;
 }) {
   const [imgData, setImgData] = useState<string|null>(null)
-  const [prompt, setPrompt] = useState('')
+  const [brand, setBrand] = useState<'5gates'|'bizbay'>('5gates')
   const [outputMode, setOutputMode] = useState<'carousel'|'story'>('carousel')
   const [loading, setLoading] = useState(false)
+  const [loadingMsg, setLoadingMsg] = useState('')
   const [result, setResult] = useState<{headline:string;body:string}|null>(null)
+  const [error, setError] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+
+  const accent = brand==='bizbay' ? '#00BCD4' : '#CC3333'
+  const brandName = brand==='bizbay' ? 'Bizbay — منصة بيع وشراء الأعمال' : '5Gates — استشارات محاسبية'
+  const handle = brand==='bizbay' ? '@mybizbay' : '@5gates.bh'
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]
     if(!f) return
+    setResult(null); setError('')
     const reader = new FileReader()
     reader.onload = ev => setImgData(ev.target?.result as string)
     reader.readAsDataURL(f)
   }
 
   async function generate() {
-    if(!prompt.trim()) return
-    setLoading(true)
+    if(!imgData){ setError('ارفع صورة أولاً'); return }
+    setLoading(true); setError(''); setResult(null)
+    setLoadingMsg('📸 يقرأ الصورة...')
+
     try {
-      const messages: any[] = [{ role: 'user', content: [] as any[] }]
-      if(imgData) {
-        const base64 = imgData.split(',')[1]
-        const mtype = imgData.startsWith('data:image/png') ? 'image/png' : 'image/jpeg'
-        messages[0].content.push({ type: 'image', source: { type: 'base64', media_type: mtype, data: base64 } })
-      }
-      messages[0].content.push({
-        type: 'text',
-        text: `أنت مصمم محتوى لشركة FIVEGATES للاستشارات المحاسبية في البحرين.
-هوية الشركة: ألوان - أحمر غامق #CC3333، خلفيات داكنة. خط عربي بولد. أسلوب احترافي ومباشر.
+      const base64 = imgData.split(',')[1]
+      const mtype = imgData.startsWith('data:image/png') ? 'image/png'
+        : imgData.startsWith('data:image/webp') ? 'image/webp' : 'image/jpeg'
 
-المطلوب: ${prompt}
-نوع المحتوى: ${outputMode === 'story' ? 'ستوري (9:16)' : 'كاروسيل (4:5)'}
-${imgData ? 'الصورة المرفوعة: استخدمها كخلفية للبوست.' : ''}
-
-أجب فقط بـ JSON بهذا الشكل (بدون أي نص إضافي):
-{"headline":"العنوان الرئيسي بالعربي (مختصر وقوي، ممكن يحتوي **تمييز أحمر**)","body":"النص الوصفي (جملة أو جملتين)"}`
-      })
+      setTimeout(()=>setLoadingMsg('✍️ يكتب بالعربي الخليجي...'), 1800)
 
       const r = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          system: 'أنت مصمم محتوى محترف. أجب فقط بـ JSON صالح بدون أي نص إضافي أو markdown.',
-          messages
+          system: `أنت خبير محتوى سوشيال ميديا خليجي. مهمتك: اقرأ الصورة المرفقة (بوست إنجليزي من حسابات مثل Foundr)، افهم الفكرة الأساسية، ثم أعد كتابتها بالكامل بالعربي الخليجي لحساب ${brandName}.
+
+قواعد الكتابة:
+- العنوان: جملة واحدة أو جملتان قصيرتان، جريئة، مباشرة، بالعربي الخليجي
+- لا ترجمة حرفية — أعد صياغة الفكرة بأسلوب خليجي أصيل
+- النص: جملة دعم قصيرة تعزز الفكرة
+- ممكن تستخدم **كلمة** للتمييز بالأحمر
+
+أجب فقط بـ JSON بدون أي نص خارجه:
+{"headline":"العنوان هنا","body":"النص الداعم هنا"}`,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: mtype, data: base64 } },
+              { type: 'text', text: `اقرأ هذا البوست وأعد كتابته بالعربي الخليجي لـ ${brandName}. أجب بـ JSON فقط.` }
+            ]
+          }]
         })
       })
+
+      if(!r.ok) throw new Error('فشل الاتصال بـ AI')
       const d = await r.json()
       const text = d.reply || d.content || d.message || ''
-      const clean = text.replace(/```json|```/g, '').trim()
-      const parsed = JSON.parse(clean)
+      const clean = text.replace(/```json|```/g,'').trim()
+      // Extract JSON object from response
+      const match = clean.match(/\{[\s\S]*\}/)
+      if(!match) throw new Error('لم يرجع AI نتيجة صحيحة')
+      const parsed = JSON.parse(match[0])
+      if(!parsed.headline) throw new Error('لم يرجع AI عنواناً')
       setResult(parsed)
-    } catch(e: any) {
-      // fallback if no /api/chat — build basic branded slide
-      setResult({
-        headline: `**${prompt.slice(0,20)}**`,
-        body: 'تواصل مع فايف غيتس للاستشارات المحاسبية في البحرين'
-      })
+    } catch(e:any) {
+      setError(e.message || 'حدث خطأ، حاول مجدداً')
     } finally {
       setLoading(false)
+      setLoadingMsg('')
     }
   }
 
@@ -610,9 +625,9 @@ ${imgData ? 'الصورة المرفوعة: استخدمها كخلفية للب
     onApply({
       headline: result.headline,
       body: result.body,
-      handle: '@5gates.bh',
-      uploadedBg: imgData || undefined,
-      overlayOpacity: imgData ? 0.65 : 0.72,
+      handle,
+      uploadedBg: undefined,
+      overlayOpacity: 0.72,
       mode: outputMode,
       textAlign: 'middle',
     })
@@ -620,87 +635,120 @@ ${imgData ? 'الصورة المرفوعة: استخدمها كخلفية للب
   }
 
   return (
-    <div onClick={e=>{if(e.target===e.currentTarget)onClose()}} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.92)',backdropFilter:'blur(18px)',zIndex:1500,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
-      <div style={{background:'#1A1A1A',border:'1px solid rgba(255,255,255,0.1)',borderTop:'3px solid #CC3333',borderRadius:'20px 20px 0 0',width:'100%',maxWidth:560,maxHeight:'92dvh',display:'flex',flexDirection:'column'}}>
-        <div style={{padding:'16px 20px 12px',flexShrink:0}}>
-          <div style={{width:36,height:4,background:'rgba(255,255,255,0.15)',borderRadius:2,margin:'0 auto 14px'}}/>
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-            <div style={{fontFamily:"'Tajawal',sans-serif",fontWeight:900,fontSize:17}}>🎨 برندة AI — 5GATES</div>
+    <div onClick={e=>{if(e.target===e.currentTarget)onClose()}} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.94)',backdropFilter:'blur(20px)',zIndex:1500,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
+      <div style={{background:'#161616',border:'1px solid rgba(255,255,255,0.08)',borderTop:`3px solid ${accent}`,borderRadius:'20px 20px 0 0',width:'100%',maxWidth:560,maxHeight:'92dvh',display:'flex',flexDirection:'column'}}>
+
+        {/* Header */}
+        <div style={{padding:'16px 20px 14px',flexShrink:0}}>
+          <div style={{width:36,height:4,background:'rgba(255,255,255,0.12)',borderRadius:2,margin:'0 auto 14px'}}/>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
+            <div style={{fontFamily:"'Tajawal',sans-serif",fontWeight:900,fontSize:17}}>
+              📸 صورة → عربي
+            </div>
             <button onClick={onClose} style={{...btnD,width:32,height:32,padding:0,justifyContent:'center'}}>✕</button>
           </div>
-          <div style={{fontSize:11,color:'#444',marginTop:6,direction:'rtl'}}>ارفع صورة + وصف → AI يولّد محتوى ببراند 5GATES</div>
+          <div style={{fontSize:11,color:'#555',direction:'rtl',marginBottom:14,lineHeight:1.7}}>
+            ارفع أي بوست إنجليزي → AI يقرأه ويعيد كتابته بالعربي الخليجي
+          </div>
+
+          {/* Brand picker */}
+          <div style={{display:'flex',gap:0,background:'#111',borderRadius:10,padding:3}}>
+            {(['5gates','bizbay'] as const).map(b=>(
+              <button key={b} onClick={()=>setBrand(b)} style={{flex:1,padding:'9px',background:brand===b?(b==='bizbay'?'#00BCD4':'#CC3333'):'transparent',border:'none',borderRadius:8,color:brand===b?'#fff':'#444',fontFamily:"'Cairo',sans-serif",fontSize:13,fontWeight:800,cursor:'pointer',transition:'all .15s',WebkitTapHighlightColor:'transparent'}}>
+                {b==='5gates'?'🔴 5Gates':'🔵 Bizbay'}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div style={{flex:1,overflowY:'auto',padding:'0 20px 20px'}}>
-          {/* Output mode */}
+
+          {/* Format */}
           <div style={{display:'flex',gap:0,marginBottom:16,background:'#111',borderRadius:10,padding:3}}>
             {(['carousel','story'] as const).map(m=>(
-              <button key={m} onClick={()=>setOutputMode(m)} style={{flex:1,padding:'9px',background:outputMode===m?'#CC3333':'transparent',border:'none',borderRadius:8,color:outputMode===m?'#fff':'#444',fontFamily:"'Cairo',sans-serif",fontSize:13,fontWeight:800,cursor:'pointer',transition:'all .15s',WebkitTapHighlightColor:'transparent'}}>
+              <button key={m} onClick={()=>setOutputMode(m)} style={{flex:1,padding:'8px',background:outputMode===m?accent:'transparent',border:'none',borderRadius:8,color:outputMode===m?'#fff':'#444',fontFamily:"'Cairo',sans-serif",fontSize:12,fontWeight:700,cursor:'pointer',transition:'all .15s',WebkitTapHighlightColor:'transparent'}}>
                 {m==='carousel'?'🎠 كاروسيل':'📱 ستوري'}
               </button>
             ))}
           </div>
 
-          {/* Image upload */}
-          <div style={{marginBottom:14}}>
-            <div style={{fontSize:10,color:'#444',fontWeight:800,marginBottom:6}}>صورة الخلفية (اختياري)</div>
-            <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{display:'none'}}/>
-            {imgData ? (
-              <div style={{position:'relative',borderRadius:12,overflow:'hidden',marginBottom:4}}>
-                <img src={imgData} style={{width:'100%',maxHeight:160,objectFit:'cover',display:'block'}}/>
-                <button onClick={()=>setImgData(null)} style={{position:'absolute',top:8,left:8,...btnD,width:28,height:28,padding:0,justifyContent:'center',fontSize:12}}>✕</button>
-                <div style={{position:'absolute',bottom:0,left:0,right:0,padding:'6px 10px',background:'linear-gradient(to top,rgba(0,0,0,0.8),transparent)',fontSize:11,color:'rgba(255,255,255,0.7)'}}>تم رفع الصورة ✓</div>
-              </div>
-            ) : (
-              <button onClick={()=>fileRef.current?.click()} style={{width:'100%',background:'#111',border:'2px dashed rgba(255,255,255,0.1)',borderRadius:12,padding:'24px',cursor:'pointer',color:'#444',fontFamily:"'Cairo',sans-serif",fontSize:13,display:'flex',flexDirection:'column',alignItems:'center',gap:6}}>
-                <span style={{fontSize:28}}>🖼️</span>
-                <span>اضغط لرفع صورة</span>
-                <span style={{fontSize:10,color:'#333'}}>JPG, PNG, WebP</span>
-              </button>
-            )}
-          </div>
-
-          {/* Prompt */}
-          <div style={{marginBottom:16}}>
-            <div style={{fontSize:10,color:'#444',fontWeight:800,marginBottom:6}}>وصف المطلوب</div>
-            <textarea
-              value={prompt}
-              onChange={e=>setPrompt(e.target.value)}
-              rows={3}
-              style={{...inp,resize:'none',lineHeight:1.8,fontSize:13}}
-              placeholder="مثال: اعمل بوست ترحيب بعميل جديد ببراند 5GATES، أو: بوست عن خدمة المحاسبة الشهرية"
-            />
-            <div style={{display:'flex',flexWrap:'wrap',gap:5,marginTop:6}}>
-              {['بوست ترحيب بعميل','خدمة المحاسبة الشهرية','عروض رمضان','إطلاق خدمة جديدة'].map(p=>(
-                <div key={p} onClick={()=>setPrompt(p)} style={{background:'#222',border:'1px solid rgba(255,255,255,0.08)',borderRadius:20,padding:'4px 10px',fontSize:11,color:'#555',cursor:'pointer',fontFamily:"'Cairo',sans-serif"}}>{p}</div>
-              ))}
-            </div>
-          </div>
-
-          {/* Result preview */}
-          {result && (
-            <div style={{background:'rgba(204,51,51,0.06)',border:'1px solid rgba(204,51,51,0.2)',borderRadius:12,padding:14,marginBottom:14,direction:'rtl'}}>
-              <div style={{fontSize:10,color:'#CC3333',fontWeight:800,marginBottom:8}}>✦ النتيجة</div>
-              <div style={{fontSize:14,fontWeight:800,color:'#F0EDE8',marginBottom:6,lineHeight:1.5}}>{result.headline.replace(/\*+/g,'')}</div>
-              <div style={{fontSize:12,color:'rgba(240,237,232,0.6)',lineHeight:1.7}}>{result.body}</div>
+          {/* Image upload — BIG and prominent */}
+          <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{display:'none'}}/>
+          {!imgData ? (
+            <button onClick={()=>fileRef.current?.click()} style={{width:'100%',background:'#111',border:`2px dashed ${accent}40`,borderRadius:16,padding:'36px 20px',cursor:'pointer',color:'#555',fontFamily:"'Cairo',sans-serif",display:'flex',flexDirection:'column',alignItems:'center',gap:10,marginBottom:16,transition:'border-color .2s'}}>
+              <span style={{fontSize:44}}>📸</span>
+              <span style={{fontSize:14,fontWeight:700,color:'#888'}}>ارفع بوست Foundr أو أي صورة إنجليزية</span>
+              <span style={{fontSize:11,color:'#333'}}>JPG, PNG, WebP — AI سيقرأ النص من الصورة</span>
+            </button>
+          ) : (
+            <div style={{position:'relative',borderRadius:14,overflow:'hidden',marginBottom:16}}>
+              <img src={imgData} style={{width:'100%',maxHeight:240,objectFit:'contain',display:'block',background:'#111'}}/>
+              <div style={{position:'absolute',inset:0,background:'linear-gradient(to bottom,transparent 60%,rgba(0,0,0,0.8))',pointerEvents:'none'}}/>
+              <button onClick={()=>{setImgData(null);setResult(null);setError('')}} style={{position:'absolute',top:8,right:8,...btnD,width:30,height:30,padding:0,justifyContent:'center',fontSize:13}}>✕</button>
+              {!result && !loading && (
+                <div style={{position:'absolute',bottom:10,left:'50%',transform:'translateX(-50%)',fontSize:11,color:'rgba(255,255,255,0.6)',whiteSpace:'nowrap'}}>
+                  ✓ جاهز للتحليل
+                </div>
+              )}
             </div>
           )}
 
+          {/* Error */}
+          {error && (
+            <div style={{background:'rgba(255,85,85,0.08)',border:'1px solid rgba(255,85,85,0.25)',borderRadius:10,padding:'10px 14px',marginBottom:14,fontSize:12,color:'#FF5555',direction:'rtl'}}>
+              ⚠️ {error}
+            </div>
+          )}
+
+          {/* Loading state */}
+          {loading && (
+            <div style={{background:`rgba(${brand==='bizbay'?'0,188,212':'204,51,51'},0.06)`,border:`1px solid rgba(${brand==='bizbay'?'0,188,212':'204,51,51'},0.2)`,borderRadius:12,padding:'20px',marginBottom:14,textAlign:'center'}}>
+              <div style={{display:'flex',justifyContent:'center',gap:6,marginBottom:10}}>
+                {[0,1,2].map(d=><div key={d} style={{width:8,height:8,background:accent,borderRadius:'50%',animation:`bounce .9s ${d*0.2}s ease-in-out infinite`}}/>)}
+              </div>
+              <div style={{fontSize:13,color:accent,fontWeight:700}}>{loadingMsg}</div>
+            </div>
+          )}
+
+          {/* Result */}
+          {result && !loading && (
+            <div style={{background:`rgba(${brand==='bizbay'?'0,188,212':'204,51,51'},0.06)`,border:`1px solid ${accent}40`,borderRadius:14,padding:16,marginBottom:14,direction:'rtl'}}>
+              <div style={{fontSize:10,color:accent,fontWeight:800,marginBottom:10,letterSpacing:1}}>✦ النتيجة — جاهزة للإضافة</div>
+              <div style={{fontSize:18,fontWeight:900,color:'#F0EDE8',marginBottom:10,lineHeight:1.5,fontFamily:"'Cairo',sans-serif"}}>
+                {result.headline.replace(/\*+/g,'')}
+              </div>
+              <div style={{fontSize:13,color:'rgba(240,237,232,0.65)',lineHeight:1.7,fontFamily:"'Cairo',sans-serif"}}>
+                {result.body}
+              </div>
+              <div style={{marginTop:10,fontSize:10,color:'#444',display:'flex',alignItems:'center',gap:6}}>
+                <span style={{background:accent,color:'#fff',padding:'2px 8px',borderRadius:6,fontWeight:800,fontSize:9}}>{brand==='bizbay'?'BIZBAY':'5GATES'}</span>
+                <span>{handle} · {outputMode==='story'?'ستوري 📱':'كاروسيل 🎠'}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Actions */}
           <div style={{display:'flex',gap:10}}>
             {!result ? (
               <>
                 <button onClick={onClose} style={{...btnD,flex:1,justifyContent:'center'}}>إلغاء</button>
-                <button onClick={generate} disabled={loading||!prompt.trim()} style={{...btnR,flex:2,justifyContent:'center',opacity:(loading||!prompt.trim())?.6:1}}>
-                  {loading ? <><span style={{width:14,height:14,border:'2px solid rgba(255,255,255,0.2)',borderTopColor:'#fff',borderRadius:'50%',animation:'spin .6s linear infinite',display:'inline-block'}}/> يولّد…</> : '✦ توليد بـ AI'}
+                <button onClick={generate} disabled={loading||!imgData}
+                  style={{...btnR,flex:2,justifyContent:'center',background:accent,boxShadow:`0 3px 14px ${accent}44`,opacity:(loading||!imgData)?.5:1}}>
+                  {loading
+                    ? <><span style={{width:14,height:14,border:'2px solid rgba(255,255,255,0.3)',borderTopColor:'#fff',borderRadius:'50%',animation:'spin .6s linear infinite',display:'inline-block'}}/> يحلل...</>
+                    : '✦ حلّل واكتب بالعربي'}
                 </button>
               </>
             ) : (
               <>
-                <button onClick={()=>setResult(null)} style={{...btnD,flex:1,justifyContent:'center'}}>↺ جرب مجدداً</button>
-                <button onClick={apply} style={{...btnR,flex:2,justifyContent:'center'}}>✓ إضافة للمنشئ</button>
+                <button onClick={()=>{setResult(null)}} style={{...btnD,flex:1,justifyContent:'center'}}>↺ مجدداً</button>
+                <button onClick={apply} style={{...btnR,flex:2,justifyContent:'center',background:accent,boxShadow:`0 3px 14px ${accent}44`}}>
+                  ✓ أضف للمنشئ
+                </button>
               </>
             )}
           </div>
+
         </div>
       </div>
     </div>
@@ -1494,7 +1542,6 @@ export default function App(){
       {/* AI BRANDING MODAL */}
       {brandingOpen && (
         <AiBrandingModal
-          theme={theme}
           onClose={() => setBrandingOpen(false)}
           onApply={newSlide => {
             setSlides(p => [...p, {
