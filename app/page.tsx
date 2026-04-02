@@ -161,7 +161,7 @@ async function renderSlide(slide:Slide,idx:number,total:number,theme:Theme,fontS
 function drawThumb(slide:Slide,idx:number,total:number,theme:Theme,fs:number,canvas:HTMLCanvasElement,bgImg?:HTMLImageElement|null){
   const isStory = slide.mode==='story'
   const W=canvas.width, H=canvas.height, t=T[theme]
-  const pfs=fs*(W/700)
+  const pfs = isStory ? fs*(H/1920) : fs*(W/700)
   const ctx=canvas.getContext('2d')!
   if((bgImg)&&(slide.bgImage||slide.uploadedBg)){ctx.drawImage(bgImg,0,0,W,H);ctx.fillStyle=`rgba(0,0,0,${slide.overlayOpacity??0.72})`;ctx.fillRect(0,0,W,H)}
   else{ctx.fillStyle=t.bg;ctx.fillRect(0,0,W,H)}
@@ -184,7 +184,7 @@ function drawThumb(slide:Slide,idx:number,total:number,theme:Theme,fs:number,can
   const baseY = isStory
     ? (vPos==='top'?H*0.15:vPos==='bottom'?H*0.60:H*0.32)
     : (vPos==='top'?H*0.18:vPos==='bottom'?H*0.55:H*0.28)
-  const hs=Math.round(88*pfs),lh=hs*1.32,tr=W-80*W/1080+hxOff,mx=W-180*W/1080
+  const hs=Math.round(88*pfs),lh=hs*1.32,tr=W*0.93+hxOff,mx=W*0.85
   ctx.font=`900 ${hs}px ${F}`; ctx.textAlign='right'; ctx.textBaseline='top'
   const plain=slide.headline.replace(/\*+/g,''),words=plain.split(' '),lines:string[]=[]; let cur=''
   for(const w of words){const test=cur?cur+' '+w:w; if(ctx.measureText(test).width>mx&&cur){lines.push(cur);cur=w}else cur=test}
@@ -1019,7 +1019,7 @@ export default function App(){
                     </div>
                   ):slides.map((sl,i)=>(
                     <SlideThumb key={i+'-'+theme+'-'+fs+'-'+(sl.icon||'')+'-'+(sl.bgImage||'')+'-'+(sl.uploadedBg?'up':'')+'-'+(sl.textAlign||'')+'-'+(sl.headX||0)+'-'+(sl.headY||0)+'-'+(sl.bodyX||0)+'-'+(sl.bodyY||0)+'-'+(sl.mode||'carousel')}
-                      slide={sl} idx={i} total={slides.length} theme={theme} fs={fs} active={active===i} onClick={()=>setActive(i)} size={sl.mode==='story'?135:180}/>
+                      slide={sl} idx={i} total={slides.length} theme={theme} fs={fs} active={active===i} onClick={()=>setActive(i)} size={sl.mode==='story'?170:180}/>
                   ))}
                 </div>
               </div>
