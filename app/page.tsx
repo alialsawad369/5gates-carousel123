@@ -759,6 +759,354 @@ const inp:React.CSSProperties={width:'100%',background:'#1E1E1E',border:'1px sol
 const btnR:React.CSSProperties={background:'#CC3333',color:'#fff',border:'none',borderRadius:10,fontFamily:"'Cairo',sans-serif",fontSize:13,fontWeight:800,padding:'10px 16px',cursor:'pointer',display:'inline-flex',alignItems:'center',gap:6,boxShadow:'0 3px 14px rgba(204,51,51,0.35)',WebkitTapHighlightColor:'transparent',flexShrink:0}
 const btnD:React.CSSProperties={background:'#2A2A2A',color:'#888',border:'1px solid rgba(255,255,255,0.1)',borderRadius:10,fontFamily:"'Cairo',sans-serif",fontSize:13,fontWeight:700,padding:'9px 13px',cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5,WebkitTapHighlightColor:'transparent',flexShrink:0}
 
+// ═══════════════════════════════════════════════════
+// BIZ4SALE REEL GENERATOR
+// Fill form → renders branded business-for-sale card
+// ═══════════════════════════════════════════════════
+type Biz4SaleData = {
+  bizTypeAr: string; bizTypeEn: string;
+  locationAr: string; locationEn: string;
+  price: string; currency: string;
+  monthlySales: string; rent: string;
+  employees: string; salaries: string;
+  extraLabel1: string; extraValue1: string;
+  extraLabel2: string; extraValue2: string;
+  bgImage: string|null;
+}
+
+async function renderBiz4Sale(data: Biz4SaleData, format: 'story'|'carousel'): Promise<string> {
+  const W = 1080
+  const H = format === 'story' ? 1920 : 1350
+  const canvas = document.createElement('canvas')
+  canvas.width = W; canvas.height = H
+  const ctx = canvas.getContext('2d')!
+  ctx.direction = 'rtl'
+
+  // Background
+  if (data.bgImage) {
+    await new Promise<void>(res => {
+      const img = new Image(); img.crossOrigin = 'anonymous'
+      img.onload = () => { ctx.drawImage(img, 0, 0, W, H); res() }
+      img.onerror = () => res()
+      img.src = data.bgImage!
+    })
+    ctx.fillStyle = 'rgba(0,0,0,0.72)'; ctx.fillRect(0, 0, W, H)
+  } else {
+    // Gradient dark background like the image
+    const grad = ctx.createLinearGradient(0, 0, 0, H)
+    grad.addColorStop(0, '#1a1a1a')
+    grad.addColorStop(1, '#0d0d0d')
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H)
+  }
+
+  // Subtle teal glow top-right
+  const glow = ctx.createRadialGradient(W*0.85, 0, 0, W*0.85, 0, W*0.7)
+  glow.addColorStop(0, 'rgba(0,188,212,0.15)')
+  glow.addColorStop(1, 'transparent')
+  ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H)
+
+  const pad = 70
+  const teal = '#00BCD4'
+  const white = '#FFFFFF'
+  const F_AR = "'Cairo','Tajawal',sans-serif"
+  const F_EN = "Arial,sans-serif"
+
+  // FOR SALE badge — top right
+  const badgeW = 220, badgeH = 90, badgeR = 18
+  const bx = W - pad - badgeW, by = format === 'story' ? 120 : 90
+  ctx.fillStyle = teal
+  ctx.beginPath(); ctx.roundRect(bx, by, badgeW, badgeH, badgeR); ctx.fill()
+  ctx.fillStyle = white; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+  ctx.font = `800 28px ${F_EN}`; ctx.fillText('For Sale', bx + badgeW/2, by + 28)
+  ctx.font = `700 26px ${F_AR}`; ctx.fillText('للبيع', bx + badgeW/2, by + 62)
+
+  // Business type — big Arabic title
+  const titleY = format === 'story' ? 270 : 220
+  ctx.fillStyle = white; ctx.textAlign = 'right'; ctx.textBaseline = 'top'
+  ctx.font = `900 88px ${F_AR}`; ctx.fillText(data.bizTypeAr || 'اسم النشاط', W - pad, titleY)
+  ctx.font = `700 52px ${F_EN}`; ctx.textAlign = 'right'
+  ctx.fillStyle = 'rgba(255,255,255,0.75)'
+  ctx.fillText(data.bizTypeEn || 'Business Name', W - pad, titleY + 100)
+
+  // Location
+  const locY = titleY + 185
+  ctx.font = `600 38px ${F_AR}`; ctx.fillStyle = 'rgba(255,255,255,0.6)'
+  ctx.textAlign = 'right'
+  const locText = `${data.locationAr || ''}${data.locationEn ? ' - ' + data.locationEn : ''}`
+  ctx.fillText('📍 ' + locText, W - pad, locY)
+
+  // Price card — full width
+  const priceCardY = locY + 70
+  const priceCardH = 150
+  ctx.fillStyle = 'rgba(255,255,255,0.08)'
+  ctx.beginPath(); ctx.roundRect(pad, priceCardY, W - pad*2, priceCardH, 20); ctx.fill()
+  ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 1
+  ctx.beginPath(); ctx.roundRect(pad, priceCardY, W - pad*2, priceCardH, 20); ctx.stroke()
+  // Price label
+  ctx.font = `600 28px ${F_AR}`; ctx.fillStyle = 'rgba(255,255,255,0.5)'
+  ctx.textAlign = 'right'; ctx.textBaseline = 'top'
+  ctx.fillText('السعر / Price', W - pad - 24, priceCardY + 18)
+  // Price value
+  ctx.font = `900 82px ${F_EN}`; ctx.fillStyle = white
+  ctx.textAlign = 'right'; ctx.textBaseline = 'bottom'
+  ctx.fillText(`${data.price || '0'} ${data.currency || 'BHD'}`, W - pad - 24, priceCardY + priceCardH - 14)
+
+  // Stats grid — 2 columns x 2 rows
+  const stats = [
+    { arLabel: 'المبيعات الشهرية', enLabel: 'Monthly Sales', value: data.monthlySales || '—' },
+    { arLabel: 'الإيجار', enLabel: 'Rent', value: data.rent || '—' },
+    { arLabel: 'الموظفين', enLabel: 'Employees', value: data.employees || '—' },
+    { arLabel: 'المعاشات', enLabel: 'Salaries', value: data.salaries || '—' },
+  ]
+  // Add extra fields if filled
+  if (data.extraLabel1 && data.extraValue1) stats.push({ arLabel: data.extraLabel1, enLabel: '', value: data.extraValue1 })
+  if (data.extraLabel2 && data.extraValue2) stats.push({ arLabel: data.extraLabel2, enLabel: '', value: data.extraValue2 })
+
+  const gridY = priceCardY + priceCardH + 30
+  const cols = 2
+  const cellGap = 20
+  const cellW = (W - pad*2 - cellGap) / cols
+  const cellH = 160
+
+  stats.forEach((s, i) => {
+    const col = i % cols
+    const row = Math.floor(i / cols)
+    const cx = pad + col * (cellW + cellGap)
+    const cy = gridY + row * (cellH + cellGap)
+    // Cell bg
+    ctx.fillStyle = 'rgba(255,255,255,0.07)'
+    ctx.beginPath(); ctx.roundRect(cx, cy, cellW, cellH, 16); ctx.fill()
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1
+    ctx.beginPath(); ctx.roundRect(cx, cy, cellW, cellH, 16); ctx.stroke()
+    // Labels
+    ctx.font = `600 24px ${F_AR}`; ctx.fillStyle = 'rgba(255,255,255,0.5)'
+    ctx.textAlign = 'right'; ctx.textBaseline = 'top'
+    ctx.fillText(s.arLabel, cx + cellW - 20, cy + 18)
+    if (s.enLabel) {
+      ctx.font = `500 20px ${F_EN}`; ctx.fillStyle = 'rgba(255,255,255,0.35)'
+      ctx.textAlign = 'right'
+      ctx.fillText(s.enLabel, cx + cellW - 20, cy + 46)
+    }
+    // Value
+    ctx.font = `900 64px ${F_EN}`; ctx.fillStyle = white
+    ctx.textAlign = 'right'; ctx.textBaseline = 'bottom'
+    ctx.fillText(s.value, cx + cellW - 20, cy + cellH - 14)
+  })
+
+  // Bottom website
+  const webY = H - 80
+  ctx.font = `700 34px ${F_EN}`; ctx.fillStyle = teal
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+  ctx.fillText('www.mybizbay.com', W/2, webY)
+
+  // Bizbay logo mark top-left
+  ctx.font = `italic 900 36px ${F_EN}`; ctx.fillStyle = 'rgba(0,188,212,0.5)'
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+  ctx.fillText('bizbay®', pad, format === 'story' ? 120 : 90)
+
+  return canvas.toDataURL('image/jpeg', 0.93)
+}
+
+function Biz4SaleModal({ onClose }: { onClose: () => void }) {
+  const [data, setData] = useState<Biz4SaleData>({
+    bizTypeAr: '', bizTypeEn: '', locationAr: '', locationEn: '',
+    price: '', currency: 'BHD', monthlySales: '', rent: '',
+    employees: '', salaries: '', extraLabel1: '', extraValue1: '',
+    extraLabel2: '', extraValue2: '', bgImage: null,
+  })
+  const [format, setFormat] = useState<'story'|'carousel'>('story')
+  const [preview, setPreview] = useState<string|null>(null)
+  const [generating, setGenerating] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  function set(k: keyof Biz4SaleData, v: string|null) {
+    setData(d => ({ ...d, [k]: v })); setPreview(null)
+  }
+
+  async function generate() {
+    setGenerating(true)
+    try {
+      const img = await renderBiz4Sale(data, format)
+      setPreview(img)
+    } catch(e) { console.error(e) }
+    finally { setGenerating(false) }
+  }
+
+  function download() {
+    if (!preview) return
+    const a = document.createElement('a')
+    a.href = preview
+    a.download = `bizbay-4sale-${data.bizTypeEn||'biz'}-${format}.jpg`
+    a.click()
+  }
+
+  function handleBgFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]; if (!f) return
+    const reader = new FileReader()
+    reader.onload = ev => { set('bgImage', ev.target?.result as string); setPreview(null) }
+    reader.readAsDataURL(f)
+  }
+
+  const inpLTR: React.CSSProperties = { ...inp, direction: 'ltr', textAlign: 'left' }
+  const inpSm: React.CSSProperties = { ...inp, padding: '8px 10px', fontSize: 12 }
+
+  return (
+    <div onClick={e => { if (e.target === e.currentTarget) onClose() }}
+      style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.94)',backdropFilter:'blur(20px)',zIndex:1500,display:'flex',alignItems:'flex-end',justifyContent:'center' }}>
+      <div style={{ background:'#161616',border:'1px solid rgba(0,188,212,0.2)',borderTop:'3px solid #00BCD4',borderRadius:'20px 20px 0 0',width:'100%',maxWidth:600,maxHeight:'94dvh',display:'flex',flexDirection:'column' }}>
+
+        {/* Header */}
+        <div style={{ padding:'16px 20px 12px',flexShrink:0 }}>
+          <div style={{ width:36,height:4,background:'rgba(255,255,255,0.12)',borderRadius:2,margin:'0 auto 14px' }}/>
+          <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between' }}>
+            <div style={{ display:'flex',alignItems:'center',gap:10 }}>
+              <div style={{ width:36,height:36,background:'#00BCD4',borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18 }}>🏪</div>
+              <div>
+                <div style={{ fontFamily:"'Tajawal',sans-serif",fontWeight:900,fontSize:16 }}>Biz4Sale Reel</div>
+                <div style={{ fontSize:10,color:'#00BCD4',fontWeight:700 }}>BIZBAY</div>
+              </div>
+            </div>
+            <button onClick={onClose} style={{ ...btnD,width:32,height:32,padding:0,justifyContent:'center' }}>✕</button>
+          </div>
+          {/* Format toggle */}
+          <div style={{ display:'flex',gap:0,marginTop:14,background:'#111',borderRadius:10,padding:3 }}>
+            {(['story','carousel'] as const).map(f => (
+              <button key={f} onClick={() => { setFormat(f); setPreview(null) }}
+                style={{ flex:1,padding:'8px',background:format===f?'#00BCD4':'transparent',border:'none',borderRadius:8,color:format===f?'#fff':'#444',fontFamily:"'Cairo',sans-serif",fontSize:12,fontWeight:800,cursor:'pointer',transition:'all .15s',WebkitTapHighlightColor:'transparent' }}>
+                {f === 'story' ? '📱 ستوري 9:16' : '🎠 كاروسيل 4:5'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ flex:1,overflowY:'auto',padding:'0 20px 20px' }}>
+
+          {/* Preview */}
+          {preview && (
+            <div style={{ marginBottom:16,borderRadius:14,overflow:'hidden',position:'relative' }}>
+              <img src={preview} style={{ width:'100%',display:'block',borderRadius:14 }}/>
+              <button onClick={() => setPreview(null)}
+                style={{ position:'absolute',top:8,left:8,...btnD,width:28,height:28,padding:0,justifyContent:'center',fontSize:11 }}>✕</button>
+              <button onClick={download}
+                style={{ position:'absolute',bottom:10,left:'50%',transform:'translateX(-50%)',...btnD,background:'rgba(0,188,212,0.9)',color:'#fff',borderColor:'transparent',padding:'8px 20px',fontSize:12,fontWeight:800,whiteSpace:'nowrap' }}>
+                ⬇️ تحميل
+              </button>
+            </div>
+          )}
+
+          {/* Form */}
+          {!preview && <>
+            {/* Business type */}
+            <div style={{ marginBottom:12 }}>
+              <div style={{ fontSize:10,color:'#00BCD4',fontWeight:800,marginBottom:6,letterSpacing:1 }}>🏪 النشاط التجاري</div>
+              <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8 }}>
+                <input value={data.bizTypeAr} onChange={e=>set('bizTypeAr',e.target.value)} style={inpSm} placeholder="مطعم ومقهى"/>
+                <input value={data.bizTypeEn} onChange={e=>set('bizTypeEn',e.target.value)} style={{...inpSm,...inpLTR}} placeholder="Cafe & Restaurant"/>
+              </div>
+            </div>
+
+            {/* Location */}
+            <div style={{ marginBottom:12 }}>
+              <div style={{ fontSize:10,color:'#00BCD4',fontWeight:800,marginBottom:6,letterSpacing:1 }}>📍 الموقع</div>
+              <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8 }}>
+                <input value={data.locationAr} onChange={e=>set('locationAr',e.target.value)} style={inpSm} placeholder="الغريفة"/>
+                <input value={data.locationEn} onChange={e=>set('locationEn',e.target.value)} style={{...inpSm,...inpLTR}} placeholder="Ghuraifa"/>
+              </div>
+            </div>
+
+            {/* Price */}
+            <div style={{ marginBottom:12 }}>
+              <div style={{ fontSize:10,color:'#00BCD4',fontWeight:800,marginBottom:6,letterSpacing:1 }}>💰 السعر</div>
+              <div style={{ display:'grid',gridTemplateColumns:'2fr 1fr',gap:8 }}>
+                <input value={data.price} onChange={e=>set('price',e.target.value)} style={{...inpSm,...inpLTR}} placeholder="17,000"/>
+                <select value={data.currency} onChange={e=>set('currency',e.target.value)} style={{...inpSm,...inpLTR}}>
+                  <option>BHD</option><option>SAR</option><option>USD</option><option>AED</option><option>KWD</option><option>QAR</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Stats grid */}
+            <div style={{ marginBottom:12 }}>
+              <div style={{ fontSize:10,color:'#00BCD4',fontWeight:800,marginBottom:6,letterSpacing:1 }}>📊 الإحصائيات</div>
+              <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8 }}>
+                <div>
+                  <div style={{ fontSize:9,color:'#555',marginBottom:3 }}>المبيعات الشهرية / Monthly Sales</div>
+                  <input value={data.monthlySales} onChange={e=>set('monthlySales',e.target.value)} style={{...inpSm,...inpLTR}} placeholder="6,500"/>
+                </div>
+                <div>
+                  <div style={{ fontSize:9,color:'#555',marginBottom:3 }}>الإيجار / Rent</div>
+                  <input value={data.rent} onChange={e=>set('rent',e.target.value)} style={{...inpSm,...inpLTR}} placeholder="650"/>
+                </div>
+                <div>
+                  <div style={{ fontSize:9,color:'#555',marginBottom:3 }}>الموظفين / Employees</div>
+                  <input value={data.employees} onChange={e=>set('employees',e.target.value)} style={{...inpSm,...inpLTR}} placeholder="6"/>
+                </div>
+                <div>
+                  <div style={{ fontSize:9,color:'#555',marginBottom:3 }}>المعاشات / Salaries</div>
+                  <input value={data.salaries} onChange={e=>set('salaries',e.target.value)} style={{...inpSm,...inpLTR}} placeholder="1,200"/>
+                </div>
+              </div>
+            </div>
+
+            {/* Extra fields */}
+            <div style={{ marginBottom:12 }}>
+              <div style={{ fontSize:10,color:'#555',fontWeight:800,marginBottom:6,letterSpacing:1 }}>➕ حقول إضافية (اختياري)</div>
+              <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:6 }}>
+                <input value={data.extraLabel1} onChange={e=>set('extraLabel1',e.target.value)} style={inpSm} placeholder="التسمية (مثال: الأرباح)"/>
+                <input value={data.extraValue1} onChange={e=>set('extraValue1',e.target.value)} style={{...inpSm,...inpLTR}} placeholder="القيمة"/>
+              </div>
+              <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8 }}>
+                <input value={data.extraLabel2} onChange={e=>set('extraLabel2',e.target.value)} style={inpSm} placeholder="التسمية"/>
+                <input value={data.extraValue2} onChange={e=>set('extraValue2',e.target.value)} style={{...inpSm,...inpLTR}} placeholder="القيمة"/>
+              </div>
+            </div>
+
+            {/* Background image */}
+            <div style={{ marginBottom:16 }}>
+              <div style={{ fontSize:10,color:'#555',fontWeight:800,marginBottom:6,letterSpacing:1 }}>🖼️ صورة الخلفية (اختياري)</div>
+              <input ref={fileRef} type="file" accept="image/*" onChange={handleBgFile} style={{ display:'none' }}/>
+              {data.bgImage ? (
+                <div style={{ display:'flex',alignItems:'center',gap:8 }}>
+                  <img src={data.bgImage} style={{ width:60,height:40,objectFit:'cover',borderRadius:8,border:'1px solid rgba(0,188,212,0.3)' }}/>
+                  <span style={{ fontSize:11,color:'#00BCD4' }}>✓ تم رفع الصورة</span>
+                  <button onClick={()=>set('bgImage',null)} style={{ ...btnD,padding:'4px 8px',fontSize:10,color:'#ff5555',marginRight:'auto' }}>✕</button>
+                </div>
+              ) : (
+                <button onClick={() => fileRef.current?.click()}
+                  style={{ width:'100%',background:'#111',border:'1px dashed rgba(0,188,212,0.3)',borderRadius:10,padding:'12px',cursor:'pointer',color:'#555',fontFamily:"'Cairo',sans-serif",fontSize:12,display:'flex',alignItems:'center',justifyContent:'center',gap:8 }}>
+                  📸 ارفع صورة للخلفية
+                </button>
+              )}
+            </div>
+          </>}
+
+          {/* Action buttons */}
+          <div style={{ display:'flex',gap:10 }}>
+            {!preview ? (
+              <>
+                <button onClick={onClose} style={{ ...btnD,flex:1,justifyContent:'center' }}>إلغاء</button>
+                <button onClick={generate} disabled={generating||!data.bizTypeAr}
+                  style={{ ...btnR,flex:2,justifyContent:'center',background:'#00BCD4',boxShadow:'0 3px 14px rgba(0,188,212,0.4)',opacity:(generating||!data.bizTypeAr)?0.5:1 }}>
+                  {generating
+                    ? <><span style={{ width:14,height:14,border:'2px solid rgba(255,255,255,0.3)',borderTopColor:'#fff',borderRadius:'50%',animation:'spin .6s linear infinite',display:'inline-block' }}/> يولّد...</>
+                    : '✦ توليد الكارت'}
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => setPreview(null)} style={{ ...btnD,flex:1,justifyContent:'center' }}>← تعديل</button>
+                <button onClick={download} style={{ ...btnR,flex:2,justifyContent:'center',background:'#00BCD4',boxShadow:'0 3px 14px rgba(0,188,212,0.4)' }}>
+                  ⬇️ تحميل
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function Sec({label,children}:{label:string;children:React.ReactNode}){
   return <div style={{marginBottom:14,borderTop:'1px solid rgba(255,255,255,0.06)',paddingTop:12}}><div style={{fontSize:9,fontWeight:800,letterSpacing:2,color:'#555',marginBottom:9,textTransform:'uppercase'}}>{label}</div>{children}</div>
 }
@@ -785,6 +1133,7 @@ export default function App(){
   // New feature states
   const [dragEditorOpen, setDragEditorOpen] = useState(false)
   const [brandingOpen, setBrandingOpen] = useState(false)
+  const [biz4saleOpen, setBiz4saleOpen] = useState(false)
   const uploadBgRef = useRef<HTMLInputElement>(null)
 
   // AI Chat state
@@ -1083,6 +1432,7 @@ export default function App(){
         </div>
         {tab==='builder'&&<>
           <button onClick={()=>setBrandingOpen(true)} style={{...btnD,padding:'7px 11px',fontSize:12,color:activeBrand==='bizbay'?'#00BCD4':'#CC3333',borderColor:activeBrand==='bizbay'?'rgba(0,188,212,0.3)':'rgba(204,51,51,0.3)'}}>📸</button>
+          {activeBrand==='bizbay'&&<button onClick={()=>setBiz4saleOpen(true)} style={{...btnD,padding:'7px 11px',fontSize:11,color:'#00BCD4',borderColor:'rgba(0,188,212,0.3)',fontWeight:800}}>🏪 4Sale</button>}
           <button onClick={openAi} style={{...btnR,padding:'8px 13px',fontSize:12,background:activeBrand==='bizbay'?'#00BCD4':'#CC3333',boxShadow:activeBrand==='bizbay'?'0 3px 14px rgba(0,188,212,0.35)':'0 3px 14px rgba(204,51,51,0.35)'}}>✦ AI</button>
           {slides.length>0&&<>
             {sl && <button onClick={()=>setDragEditorOpen(true)} style={{...btnD,padding:'8px 11px',fontSize:15,minWidth:38,justifyContent:'center'}}>✥</button>}
@@ -1571,6 +1921,8 @@ export default function App(){
           }}
         />
       )}
+
+      {biz4saleOpen && <Biz4SaleModal onClose={()=>setBiz4saleOpen(false)}/>}
 
       {toast&&<div style={{position:'fixed',bottom:72,left:'50%',transform:'translateX(-50%)',background:'#1A1A1A',border:'1px solid rgba(255,255,255,0.12)',borderRight:'3px solid #CC3333',color:'#F0EDE8',padding:'10px 20px',borderRadius:10,fontSize:13,zIndex:9999,boxShadow:'0 8px 28px rgba(0,0,0,0.7)',whiteSpace:'nowrap',fontFamily:"'Cairo',sans-serif"}}>{toast}</div>}
 
