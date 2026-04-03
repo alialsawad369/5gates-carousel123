@@ -1614,7 +1614,6 @@ export default function App(){
           {activeBrand==='bizbay'&&<button onClick={()=>setBiz4saleOpen(true)} style={{...btnD,padding:'7px 11px',fontSize:11,color:'#00BCD4',borderColor:'rgba(0,188,212,0.3)',fontWeight:800}}>🏪 4Sale</button>}
           <button onClick={openAi} style={{...btnR,padding:'8px 13px',fontSize:12,background:activeBrand==='bizbay'?'#00BCD4':'#CC3333',boxShadow:activeBrand==='bizbay'?'0 3px 14px rgba(0,188,212,0.35)':'0 3px 14px rgba(204,51,51,0.35)'}}>✦ AI</button>
           {slides.length>0&&<>
-            {sl && <button onClick={()=>setDragEditorOpen(true)} style={{...btnD,padding:'8px 11px',fontSize:15,minWidth:38,justifyContent:'center'}}>✥</button>}
             <button onClick={downloadSlides} style={{...btnD,padding:'8px 11px',fontSize:15,minWidth:38,justifyContent:'center'}}>⬇️</button>
             <button onClick={()=>setSaveOpen(true)} style={{...btnD,padding:'8px 11px',fontSize:15,minWidth:38,justifyContent:'center'}}>💾</button>
           </>}
