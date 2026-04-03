@@ -6,8 +6,8 @@ type Slide = {
   headline:string; body:string; handle:string; icon?:string; bgImage?:string;
   textAlign?:TextAlign; textX?:number; textY?:number; overlayOpacity?:number;
   headX?:number; headY?:number; bodyX?:number; bodyY?:number;
-  uploadedBg?:string; // base64 user-uploaded image
-  mode?:'carousel'|'story'; // story = 9:16
+  headSize?:number; bodySize?:number;
+  uploadedBg?:string; mode?:'carousel'|'story';
 }
 type Theme = 'dark'|'darker'|'white'|'cream'|'darkred'|'charcoal'|'bizbay'|'bizbay_light'
 type PostStatus = 'scheduled'|'published'|'failed'|'draft'|'processing'
@@ -755,6 +755,191 @@ const btnR:React.CSSProperties={background:'#CC3333',color:'#fff',border:'none',
 const btnD:React.CSSProperties={background:'#2A2A2A',color:'#888',border:'1px solid rgba(255,255,255,0.1)',borderRadius:10,fontFamily:"'Cairo',sans-serif",fontSize:13,fontWeight:700,padding:'9px 13px',cursor:'pointer',display:'inline-flex',alignItems:'center',gap:5,WebkitTapHighlightColor:'transparent',flexShrink:0}
 
 // ═══════════════════════════════════════════════════
+// INLINE EDITOR — Canva-style drag & resize text
+// directly on the slide preview in the main screen
+// ═══════════════════════════════════════════════════
+function InlineEditor({ slide, theme, fs, onUpdate }: {
+  slide: Slide; theme: Theme; fs: number;
+  onUpdate: (u: Partial<Slide>) => void;
+}) {
+  const isStory = slide.mode === 'story'
+  const t = T[theme]
+  const hasBg = !!(slide.uploadedBg || slide.bgImage)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [selected, setSelected] = useState<'head'|'body'|null>(null)
+  const [headPos, setHeadPos] = useState({ x: slide.headX ?? 50, y: slide.headY ?? (isStory?40:38) })
+  const [bodyPos, setBodyPos] = useState({ x: slide.bodyX ?? 50, y: slide.bodyY ?? (isStory?55:58) })
+  const [headSize, setHeadSize] = useState(slide.headSize ?? 1.0)
+  const [bodySize, setBodySize] = useState(slide.bodySize ?? 1.0)
+  const dragging = useRef<{which:'head'|'body';mx:number;my:number;ox:number;oy:number}|null>(null)
+
+  // Sync from slide when active changes
+  useEffect(()=>{
+    setHeadPos({ x: slide.headX??50, y: slide.headY??(isStory?40:38) })
+    setBodyPos({ x: slide.bodyX??50, y: slide.bodyY??(isStory?55:58) })
+    setHeadSize(slide.headSize??1.0)
+    setBodySize(slide.bodySize??1.0)
+    setSelected(null)
+  },[slide.headline, slide.body])
+
+  function getRect(){ return containerRef.current?.getBoundingClientRect()??{width:1,height:1} }
+
+  function startDrag(e:React.PointerEvent, which:'head'|'body'){
+    e.preventDefault(); e.stopPropagation()
+    setSelected(which)
+    const pos = which==='head' ? headPos : bodyPos
+    dragging.current = { which, mx:e.clientX, my:e.clientY, ox:pos.x, oy:pos.y }
+    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+  }
+
+  function onMove(e:React.PointerEvent){
+    if(!dragging.current) return
+    const r = getRect()
+    const dx = (e.clientX - dragging.current.mx)/r.width*100
+    const dy = (e.clientY - dragging.current.my)/r.height*100
+    const nx = Math.max(5, Math.min(95, dragging.current.ox+dx))
+    const ny = Math.max(5, Math.min(95, dragging.current.oy+dy))
+    if(dragging.current.which==='head') setHeadPos({x:nx,y:ny})
+    else setBodyPos({x:nx,y:ny})
+  }
+
+  function onUp(){
+    if(!dragging.current) return
+    if(dragging.current.which==='head') onUpdate({headX:Math.round(headPos.x),headY:Math.round(headPos.y)})
+    else onUpdate({bodyX:Math.round(bodyPos.x),bodyY:Math.round(bodyPos.y)})
+    dragging.current = null
+  }
+
+  const accent = (theme==='bizbay'||theme==='bizbay_light') ? '#00BCD4' : '#CC3333'
+  const headlineClean = slide.headline.replace(/\*+/g,'')
+  const aspectRatio = isStory ? '9/16' : '1080/1350'
+
+  return (
+    <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'12px',gap:10,overflow:'hidden'}}>
+      {/* Toolbar — shows when element selected */}
+      <div style={{height:44,display:'flex',alignItems:'center',gap:8,flexShrink:0,width:'100%',maxWidth:500,justifyContent:'center'}}>
+        {selected ? (
+          <>
+            <div style={{fontSize:11,color:'#555',fontWeight:700}}>{selected==='head'?'العنوان':'النص'}</div>
+            <div style={{display:'flex',alignItems:'center',gap:6,background:'#1E1E1E',borderRadius:10,padding:'4px 10px',border:'1px solid rgba(255,255,255,0.08)'}}>
+              <button onClick={()=>{
+                const ns = Math.max(0.5, (selected==='head'?headSize:bodySize)-0.1)
+                if(selected==='head'){setHeadSize(ns);onUpdate({headSize:ns})}
+                else{setBodySize(ns);onUpdate({bodySize:ns})}
+              }} style={{background:'none',border:'none',color:'#888',fontSize:18,cursor:'pointer',padding:'0 4px',lineHeight:1}}>−</button>
+              <span style={{fontSize:12,color:'#F0EDE8',fontWeight:800,minWidth:32,textAlign:'center'}}>
+                {Math.round((selected==='head'?headSize:bodySize)*100)}%
+              </span>
+              <button onClick={()=>{
+                const ns = Math.min(2.0, (selected==='head'?headSize:bodySize)+0.1)
+                if(selected==='head'){setHeadSize(ns);onUpdate({headSize:ns})}
+                else{setBodySize(ns);onUpdate({bodySize:ns})}
+              }} style={{background:'none',border:'none',color:'#888',fontSize:18,cursor:'pointer',padding:'0 4px',lineHeight:1}}>+</button>
+            </div>
+            <button onClick={()=>{
+              if(selected==='head'){setHeadSize(1.0);onUpdate({headSize:1.0})}
+              else{setBodySize(1.0);onUpdate({bodySize:1.0})}
+            }} style={{...btnD,padding:'5px 8px',fontSize:10}}>↺</button>
+            <button onClick={()=>setSelected(null)} style={{...btnD,padding:'5px 8px',fontSize:10}}>✕</button>
+          </>
+        ) : (
+          <div style={{fontSize:11,color:'#333',textAlign:'center'}}>اضغط على العنوان أو النص في الشريحة للتحريك والتكبير</div>
+        )}
+      </div>
+
+      {/* Slide canvas */}
+      <div ref={containerRef}
+        onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onUp}
+        onClick={e=>{ if(e.target===containerRef.current) setSelected(null) }}
+        style={{
+          position:'relative', aspectRatio, maxHeight:'calc(100% - 60px)',
+          width:`min(100%, calc((100% - 60px) * ${isStory?'0.5625':'0.8'}))`,
+          borderRadius:14, overflow:'hidden',
+          background: hasBg?'transparent':t.bg,
+          userSelect:'none', touchAction:'none', cursor:'default',
+          boxShadow:'0 8px 40px rgba(0,0,0,0.6)',
+          flexShrink:0,
+        }}>
+
+        {/* Background */}
+        {hasBg && <>
+          <img src={slide.uploadedBg||slide.bgImage} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}} crossOrigin="anonymous"/>
+          <div style={{position:'absolute',inset:0,background:`rgba(0,0,0,${slide.overlayOpacity??0.72})`}}/>
+        </>}
+
+        {/* Gradient accent */}
+        <div style={{position:'absolute',inset:0,background:`radial-gradient(circle at 110% -10%, ${accent}44, transparent 60%)`,pointerEvents:'none'}}/>
+
+        {/* Brand label */}
+        <div style={{position:'absolute',top:'3%',left:'50%',transform:'translateX(-50%)',fontSize:'clamp(7px,1.8vw,14px)',fontWeight:900,color:hasBg?'rgba(255,255,255,0.45)':t.brand,letterSpacing:2,pointerEvents:'none',fontFamily:"'Tajawal',sans-serif"}}>
+          {BRAND_META[theme]?.name||'5GATES'}
+        </div>
+
+        {/* Icon */}
+        <div style={{position:'absolute',top:'4%',right:'4%',fontSize:'clamp(14px,4vw,36px)',pointerEvents:'none'}}>
+          {getIcon(slide.headline,slide.icon)}
+        </div>
+
+        {/* Guide lines when dragging */}
+        {dragging.current && <div style={{position:'absolute',inset:0,pointerEvents:'none'}}>
+          <div style={{position:'absolute',left:'50%',top:0,bottom:0,width:1,background:'rgba(255,255,255,0.15)'}}/>
+          <div style={{position:'absolute',top:'33%',left:0,right:0,height:1,background:'rgba(255,255,255,0.15)'}}/>
+          <div style={{position:'absolute',top:'66%',left:0,right:0,height:1,background:'rgba(255,255,255,0.15)'}}/>
+        </div>}
+
+        {/* HEADLINE draggable */}
+        <div onPointerDown={e=>startDrag(e,'head')}
+          style={{position:'absolute',left:`${headPos.x}%`,top:`${headPos.y}%`,transform:'translate(-50%,-50%)',
+            cursor:'grab',touchAction:'none',zIndex:selected==='head'?10:5,maxWidth:'85%',textAlign:'center'}}>
+          <div style={{
+            padding:'6px 10px',
+            outline: selected==='head' ? `2px solid ${accent}` : '2px solid transparent',
+            outlineOffset:4, borderRadius:8,
+            transition:'outline-color 0.15s',
+          }}>
+            {selected==='head' && <div style={{position:'absolute',top:-22,left:'50%',transform:'translateX(-50%)',fontSize:9,color:accent,fontWeight:800,whiteSpace:'nowrap',background:'#1A1A1A',padding:'2px 6px',borderRadius:4}}>↕↔ اسحب</div>}
+            <div style={{
+              fontFamily:"'Cairo',sans-serif", fontWeight:900,
+              fontSize:`clamp(11px,${3.5*headSize}vw,${28*headSize}px)`,
+              color: hasBg?'#FFFFFF':t.text, lineHeight:1.35,
+              direction:'rtl', wordBreak:'break-word',
+            }}>{headlineClean}</div>
+          </div>
+        </div>
+
+        {/* BODY draggable */}
+        {slide.body && (
+          <div onPointerDown={e=>startDrag(e,'body')}
+            style={{position:'absolute',left:`${bodyPos.x}%`,top:`${bodyPos.y}%`,transform:'translate(-50%,-50%)',
+              cursor:'grab',touchAction:'none',zIndex:selected==='body'?10:5,maxWidth:'85%',textAlign:'center'}}>
+            <div style={{
+              padding:'4px 8px',
+              outline: selected==='body' ? `2px solid #60C8FF` : '2px solid transparent',
+              outlineOffset:4, borderRadius:8,
+              transition:'outline-color 0.15s',
+            }}>
+              {selected==='body' && <div style={{position:'absolute',top:-22,left:'50%',transform:'translateX(-50%)',fontSize:9,color:'#60C8FF',fontWeight:800,whiteSpace:'nowrap',background:'#1A1A1A',padding:'2px 6px',borderRadius:4}}>↕↔ اسحب</div>}
+              <div style={{
+                fontFamily:"'Cairo',sans-serif", fontWeight:500,
+                fontSize:`clamp(8px,${2.2*bodySize}vw,${17*bodySize}px)`,
+                color: hasBg?'rgba(255,255,255,0.85)':t.sub, lineHeight:1.7,
+                direction:'rtl', wordBreak:'break-word',
+              }}>{slide.body}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Handle */}
+        <div style={{position:'absolute',bottom:'4%',right:'5%',fontSize:'clamp(6px,1.5vw,11px)',color:hasBg?'rgba(255,255,255,0.3)':t.brand,fontFamily:"'Cairo',sans-serif",fontWeight:700,pointerEvents:'none'}}>
+          {slide.handle||'@5gates.bh'}
+        </div>
+        <div style={{position:'absolute',bottom:'3%',right:'5%',width:'7%',height:2,background:accent,borderRadius:1,pointerEvents:'none'}}/>
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════
 // BIZ4SALE REEL GENERATOR
 // Fill form → renders branded business-for-sale card
 // ═══════════════════════════════════════════════════
@@ -1126,7 +1311,6 @@ export default function App(){
   const [mPanel,setMPanel]=useState<'slides'|'preview'|'design'>('preview')
 
   // New feature states
-  const [dragEditorOpen, setDragEditorOpen] = useState(false)
   const [brandingOpen, setBrandingOpen] = useState(false)
   const [biz4saleOpen, setBiz4saleOpen] = useState(false)
   const uploadBgRef = useRef<HTMLInputElement>(null)
@@ -1481,21 +1665,16 @@ export default function App(){
                 </div>
               </div>
 
-              {/* CENTER */}
+              {/* CENTER — inline Canva-style editor */}
               <div className={`pnl pnl-C ${mPanel==='preview'?'m-on':''}`} style={{flex:1,background:'#0D0D0D',backgroundImage:'radial-gradient(circle at 20% 60%,rgba(204,51,51,0.05),transparent 50%)',display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0}}>
                 <div style={{padding:'7px 12px',borderBottom:'1px solid rgba(255,255,255,0.06)',display:'flex',alignItems:'center',gap:8,background:'rgba(13,13,13,0.9)',flexShrink:0}}>
                   <button onClick={()=>setActive(Math.max(0,active-1))} disabled={active===0} style={{...btnD,width:32,height:32,padding:0,justifyContent:'center',opacity:active===0?.3:1,fontSize:18}}>‹</button>
                   <span style={{fontSize:13,color:'#555',fontWeight:800,flex:1,textAlign:'center'}}>{slides.length?`${active+1} / ${slides.length}`:'—'}</span>
                   <button onClick={()=>setActive(Math.min(slides.length-1,active+1))} disabled={active>=slides.length-1} style={{...btnD,width:32,height:32,padding:0,justifyContent:'center',opacity:active>=slides.length-1?.3:1,fontSize:18}}>›</button>
-                  {slides.length>0&&(
-                    <>
-                      <button onClick={()=>setDragEditorOpen(true)} style={{...btnD,padding:'6px 10px',fontSize:11,color:'rgba(204,51,51,0.8)',borderColor:'rgba(204,51,51,0.2)'}} title="تحريك النصوص">✥ تحريك</button>
-                      <button className="m-only" onClick={()=>setMPanel('design')} style={{...btnD,padding:'6px 10px',fontSize:12}}>✏️</button>
-                    </>
-                  )}
+                  <button className="m-only" onClick={()=>setMPanel('design')} style={{...btnD,padding:'6px 10px',fontSize:12}}>✏️</button>
                 </div>
-                <div style={{flex:1,overflow:'auto',display:'flex',alignItems:'center',justifyContent:'center',padding:'20px 14px',gap:12,flexWrap:'nowrap'}}>
-                  {slides.length===0?(
+                {slides.length===0?(
+                  <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center'}}>
                     <div style={{textAlign:'center',color:'#444',padding:20}}>
                       <div style={{fontSize:52,marginBottom:12}}>✦</div>
                       <div style={{fontSize:15,color:'#555',fontWeight:800,marginBottom:8}}>ابدأ الكاروسيل أو الستوري</div>
@@ -1504,11 +1683,20 @@ export default function App(){
                         <button onClick={()=>setBrandingOpen(true)} style={{...btnD,color:'#CC3333',borderColor:'rgba(204,51,51,0.3)'}}>🎨 برندة</button>
                       </div>
                     </div>
-                  ):slides.map((sl,i)=>(
-                    <SlideThumb key={i+'-'+theme+'-'+fs+'-'+(sl.icon||'')+'-'+(sl.bgImage||'')+'-'+(sl.uploadedBg?'up':'')+'-'+(sl.textAlign||'')+'-'+(sl.headX||0)+'-'+(sl.headY||0)+'-'+(sl.bodyX||0)+'-'+(sl.bodyY||0)+'-'+(sl.mode||'carousel')}
-                      slide={sl} idx={i} total={slides.length} theme={theme} fs={fs} active={active===i} onClick={()=>setActive(i)} size={sl.mode==='story'?170:180}/>
-                  ))}
-                </div>
+                  </div>
+                ):(
+                  <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
+                    {/* Slide strip — small thumbnails */}
+                    <div style={{display:'flex',gap:8,padding:'8px 12px',overflowX:'auto',flexShrink:0,borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
+                      {slides.map((sl,i)=>(
+                        <SlideThumb key={i+'-'+theme+'-'+fs+'-'+(sl.mode||'carousel')+'-'+(sl.uploadedBg?'u':sl.bgImage||'')+'-'+(sl.headX||0)+'-'+(sl.headY||0)}
+                          slide={sl} idx={i} total={slides.length} theme={theme} fs={fs} active={active===i} onClick={()=>setActive(i)} size={60}/>
+                      ))}
+                    </div>
+                    {/* Main inline editor */}
+                    {sl && <InlineEditor slide={sl} theme={theme} fs={fs} onUpdate={upd}/>}
+                  </div>
+                )}
               </div>
 
               {/* RIGHT */}
@@ -1548,39 +1736,17 @@ export default function App(){
                         {sl?.uploadedBg ? '🖼️ صورتك المرفوعة ✓ (غيّر)' : '⬆️ ارفع صورتك'}
                       </button>
                       {sl?.uploadedBg && (
-                        <button onClick={()=>upd({uploadedBg:undefined})} style={{...btnD,width:'100%',justifyContent:'center',fontSize:11,color:'#ff5555',marginBottom:8}}>✕ حذف الصورة المرفوعة</button>
+                        <>
+                          <button onClick={()=>upd({uploadedBg:undefined})} style={{...btnD,width:'100%',justifyContent:'center',fontSize:11,color:'#ff5555',marginBottom:8}}>✕ حذف الصورة</button>
+                          <div style={{fontSize:9,color:'#444',marginBottom:4}}>شفافية التعتيم — {Math.round((sl.overlayOpacity??0.72)*100)}%</div>
+                          <input type="range" min="0.2" max="0.95" step="0.05" value={sl.overlayOpacity??0.72} onChange={e=>upd({overlayOpacity:+e.target.value})} style={{width:'100%',accentColor:'#CC3333'}}/>
+                        </>
                       )}
-                      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:5,marginBottom:sl?.bgImage?8:0}}>
-                        {BG_IMAGES.map((bg,i)=>(
-                          <div key={i} onClick={()=>upd({bgImage:bg.url||undefined,uploadedBg:undefined})}
-                            style={{aspectRatio:'1',borderRadius:7,overflow:'hidden',cursor:'pointer',border:`2px solid ${!sl?.uploadedBg&&(sl?.bgImage||'')===(bg.url)?'#CC3333':'transparent'}`,background:'#111',position:'relative',opacity:sl?.uploadedBg?0.4:1}}>
-                            {bg.url?<img src={bg.url} alt={bg.label} style={{width:'100%',height:'100%',objectFit:'cover'}} loading="lazy"/>
-                              :<div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,color:'#333',fontFamily:"'Cairo',sans-serif",textAlign:'center',padding:2}}>✕<br/>بدون</div>}
-                            {!sl?.uploadedBg&&(sl?.bgImage||'')===(bg.url)&&<div style={{position:'absolute',top:2,right:2,width:12,height:12,background:'#CC3333',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:7,color:'#fff'}}>✓</div>}
-                          </div>
-                        ))}
-                      </div>
-                      {(sl?.bgImage||sl?.uploadedBg)&&<>
-                        <div style={{fontSize:9,color:'#444',marginBottom:4,marginTop:4}}>شفافية التعتيم — {Math.round((sl.overlayOpacity??0.72)*100)}%</div>
-                        <input type="range" min="0.2" max="0.95" step="0.05" value={sl.overlayOpacity??0.72} onChange={e=>upd({overlayOpacity:+e.target.value})} style={{width:'100%',accentColor:'#CC3333'}}/>
-                      </>}
                     </Sec>
 
-                    <Sec label="موضع النص 🎯">
-                      {/* Drag editor button */}
-                      <button onClick={()=>setDragEditorOpen(true)} style={{...btnR,width:'100%',justifyContent:'center',marginBottom:10,fontSize:12,padding:'10px',background:'linear-gradient(135deg,rgba(204,51,51,0.8),rgba(204,51,51,0.5))',boxShadow:'none',border:'1px solid rgba(204,51,51,0.4)'}}>
-                        ✥ فتح محرر السحب والإفلات
-                      </button>
-                      <div style={{fontSize:10,color:'#444',marginBottom:6}}>الموضع العمودي السريع</div>
-                      <div style={{display:'flex',gap:6,marginBottom:10}}>
-                        {(['top','middle','bottom'] as TextAlign[]).map(p=>(
-                          <button key={p} onClick={()=>upd({textAlign:p})} style={{flex:1,padding:'7px 4px',borderRadius:8,border:`1px solid ${sl?.textAlign===p?'#CC3333':'rgba(255,255,255,0.1)'}`,background:sl?.textAlign===p?'rgba(204,51,51,0.15)':'#222',color:sl?.textAlign===p?'#CC3333':'#555',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:"'Cairo',sans-serif",WebkitTapHighlightColor:'transparent'}}>
-                            {p==='top'?'⬆️ أعلى':p==='middle'?'↔️ وسط':'⬇️ أسفل'}
-                          </button>
-                        ))}
-                      </div>
-                      <div style={{fontSize:9,color:'#333',marginBottom:2}}>العنوان: {sl?.headX??50}%, {sl?.headY??38}% · النص: {sl?.bodyX??50}%, {sl?.bodyY??58}%</div>
-                      <button onClick={()=>upd({headX:50,headY:38,bodyX:50,bodyY:58,textX:0,textY:0,textAlign:'middle'})} style={{...btnD,fontSize:11,padding:'5px 10px',marginTop:4}}>↺ إعادة ضبط</button>
+                    <Sec label="النص 🎯">
+                      <div style={{fontSize:10,color:'#444',marginBottom:6}}>اسحب العنوان أو النص مباشرة على الشريحة في المعاينة</div>
+                      <button onClick={()=>upd({headX:50,headY:38,bodyX:50,bodyY:58,textX:0,textY:0,textAlign:'middle'})} style={{...btnD,fontSize:11,padding:'7px 12px',width:'100%',justifyContent:'center'}}>↺ إعادة ضبط الموضع</button>
                     </Sec>
 
                     <Sec label={`تعديل الشريحة ${active+1}`}>
@@ -1888,16 +2054,7 @@ export default function App(){
         </div>
       )}
 
-      {/* DRAG TEXT EDITOR */}
-      {dragEditorOpen && sl && (
-        <DragEditor
-          slide={sl}
-          theme={theme}
-          fs={fs}
-          onSave={updates => upd(updates)}
-          onClose={() => setDragEditorOpen(false)}
-        />
-      )}
+
 
       {/* AI BRANDING MODAL */}
       {brandingOpen && (
