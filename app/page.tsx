@@ -578,10 +578,12 @@ function AiBrandingModal({onClose, onApply}: {
 
       setTimeout(()=>setLoadingMsg('✍️ يكتب بالعربي الخليجي...'), 1800)
 
-      const r = await fetch('/api/chat', {
+      const r = await fetch('/api/vision', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          imageBase64: base64,
+          mediaType: mtype,
           system: `أنت خبير محتوى سوشيال ميديا خليجي. مهمتك: اقرأ الصورة المرفقة (بوست إنجليزي من حسابات مثل Foundr)، افهم الفكرة الأساسية، ثم أعد كتابتها بالكامل بالعربي الخليجي لحساب ${brandName}.
 
 قواعد الكتابة:
@@ -592,21 +594,14 @@ function AiBrandingModal({onClose, onApply}: {
 
 أجب فقط بـ JSON بدون أي نص خارجه:
 {"headline":"العنوان هنا","body":"النص الداعم هنا"}`,
-          messages: [{
-            role: 'user',
-            content: [
-              { type: 'image', source: { type: 'base64', media_type: mtype, data: base64 } },
-              { type: 'text', text: `اقرأ هذا البوست وأعد كتابته بالعربي الخليجي لـ ${brandName}. أجب بـ JSON فقط.` }
-            ]
-          }]
+          prompt: `اقرأ هذا البوست وأعد كتابته بالعربي الخليجي لـ ${brandName}. أجب بـ JSON فقط.`
         })
       })
 
       if(!r.ok) throw new Error('فشل الاتصال بـ AI')
       const d = await r.json()
-      const text = d.reply || d.content || d.message || ''
+      const text = d.reply || ''
       const clean = text.replace(/```json|```/g,'').trim()
-      // Extract JSON object from response
       const match = clean.match(/\{[\s\S]*\}/)
       if(!match) throw new Error('لم يرجع AI نتيجة صحيحة')
       const parsed = JSON.parse(match[0])
