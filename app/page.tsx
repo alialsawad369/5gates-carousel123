@@ -1057,8 +1057,7 @@ export default function App(){
           style={{flex:1,minWidth:220,background:'#1A1A1A',border:'1px solid rgba(204,51,51,0.3)',borderTop:'4px solid #CC3333',borderRadius:20,padding:'32px 24px',cursor:'pointer',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:12,transition:'all .2s',WebkitTapHighlightColor:'transparent'}}>
           <div style={{width:64,height:64,background:'#CC3333',borderRadius:16,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:"'Tajawal',sans-serif",fontWeight:900,fontSize:26,color:'#fff',boxShadow:'0 6px 24px rgba(204,51,51,0.5)'}}>5G</div>
           <div style={{fontFamily:"'Tajawal',sans-serif",fontWeight:900,fontSize:20,color:'#F0EDE8'}}>5GATES</div>
-          <div style={{fontSize:11,color:'#555',lineHeight:1.6}}>استشارات محاسبية{'
-'}البحرين</div>
+          <div style={{fontSize:11,color:'#555',lineHeight:1.6}}>استشارات محاسبية · البحرين</div>
           <div style={{marginTop:4,background:'#CC3333',color:'#fff',padding:'8px 20px',borderRadius:10,fontSize:13,fontWeight:800,fontFamily:"'Cairo',sans-serif"}}>ابدأ →</div>
         </button>
 
@@ -1076,24 +1075,15 @@ export default function App(){
 
   return(
     <div style={{height:'100dvh',display:'flex',flexDirection:'column',overflow:'hidden',background:'#0D0D0D'}}>
-      {(()=>{
-        const isBiz = activeBrand==='bizbay'
-        const hAccent = isBiz ? '#00BCD4' : '#CC3333'
-        const hAccentShadow = isBiz ? 'rgba(0,188,212,0.5)' : 'rgba(204,51,51,0.5)'
-        const hLabel = isBiz ? 'bizbay' : '5GATES'
-        const hIcon = isBiz ? 'biz' : '5G'
-        const hIconFont = isBiz ? "'Arial',sans-serif" : "'Tajawal',sans-serif"
-        const hIconStyle = isBiz ? {fontStyle:'italic' as const} : {}
-        return (
-      <header style={{height:54,background:'#1A1A1A',borderBottom:`2px solid ${hAccent}`,display:'flex',alignItems:'center',padding:'0 12px',gap:8,flexShrink:0,zIndex:10}}>
+      <header style={{height:54,background:'#1A1A1A',borderBottom:activeBrand==='bizbay'?'2px solid #00BCD4':'2px solid #CC3333',display:'flex',alignItems:'center',padding:'0 12px',gap:8,flexShrink:0,zIndex:10}}>
         <div style={{display:'flex',alignItems:'center',gap:8,flex:1,minWidth:0}}>
-          <div style={{width:34,height:34,background:hAccent,borderRadius:9,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:hIconFont,fontWeight:900,fontSize:13,color:'#fff',...hIconStyle,boxShadow:`0 3px 12px ${hAccentShadow}`,flexShrink:0}}>{hIcon}</div>
-          <span style={{fontFamily:hIconFont,fontWeight:900,fontSize:15,...hIconStyle}}>{hLabel}</span>
+          <div style={{width:34,height:34,background:activeBrand==='bizbay'?'#00BCD4':'#CC3333',borderRadius:9,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:activeBrand==='bizbay'?"'Arial',sans-serif":"'Tajawal',sans-serif",fontWeight:900,fontSize:13,color:'#fff',fontStyle:activeBrand==='bizbay'?'italic':'normal',boxShadow:activeBrand==='bizbay'?'0 3px 12px rgba(0,188,212,0.5)':'0 3px 12px rgba(204,51,51,0.5)',flexShrink:0}}>{activeBrand==='bizbay'?'biz':'5G'}</div>
+          <span style={{fontFamily:activeBrand==='bizbay'?"'Arial',sans-serif":"'Tajawal',sans-serif",fontWeight:900,fontSize:15,fontStyle:activeBrand==='bizbay'?'italic':'normal'}}>{activeBrand==='bizbay'?'bizbay':'5GATES'}</span>
           <button onClick={()=>setActiveBrand('none')} style={{...btnD,padding:'3px 8px',fontSize:10,marginLeft:4,opacity:0.5}}>⇄</button>
         </div>
         {tab==='builder'&&<>
-          <button onClick={()=>setBrandingOpen(true)} style={{...btnD,padding:'7px 11px',fontSize:12,color:hAccent,borderColor:`${hAccent}44`}}>📸</button>
-          <button onClick={openAi} style={{...btnR,padding:'8px 13px',fontSize:12,background:hAccent,boxShadow:`0 3px 14px ${hAccentShadow}`}}>✦ AI</button>
+          <button onClick={()=>setBrandingOpen(true)} style={{...btnD,padding:'7px 11px',fontSize:12,color:activeBrand==='bizbay'?'#00BCD4':'#CC3333',borderColor:activeBrand==='bizbay'?'rgba(0,188,212,0.3)':'rgba(204,51,51,0.3)'}}>📸</button>
+          <button onClick={openAi} style={{...btnR,padding:'8px 13px',fontSize:12,background:activeBrand==='bizbay'?'#00BCD4':'#CC3333',boxShadow:activeBrand==='bizbay'?'0 3px 14px rgba(0,188,212,0.35)':'0 3px 14px rgba(204,51,51,0.35)'}}>✦ AI</button>
           {slides.length>0&&<>
             {sl && <button onClick={()=>setDragEditorOpen(true)} style={{...btnD,padding:'8px 11px',fontSize:15,minWidth:38,justifyContent:'center'}}>✥</button>}
             <button onClick={downloadSlides} style={{...btnD,padding:'8px 11px',fontSize:15,minWidth:38,justifyContent:'center'}}>⬇️</button>
@@ -1102,8 +1092,6 @@ export default function App(){
         </>}
         {tab==='queue'&&<button onClick={loadQ} style={{...btnD,padding:'8px 12px',fontSize:12}}>↻</button>}
       </header>
-        )
-      })()}
 
       <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
 
