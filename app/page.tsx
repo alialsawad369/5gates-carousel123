@@ -775,196 +775,271 @@ const btnD:React.CSSProperties={background:'#2A2A2A',color:'#888',border:'1px so
 // Uses actual SlideThumb canvas (WYSIWYG) + HTML
 // drag handles layered precisely on top
 // ═══════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
+// TRUE WYSIWYG EDITOR
+// Renders via renderSlide() — exact same function
+// as export. Tap to select text, drag to reposition.
+// ═══════════════════════════════════════════════════
 function InlineEditor({ slide, theme, fs, onUpdate, total }: {
   slide: Slide; theme: Theme; fs: number; total: number;
   onUpdate: (u: Partial<Slide>) => void;
 }) {
   const isStory = slide.mode === 'story'
-  const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const imgRef = useRef<HTMLImageElement|null>(null)
-  const [canvasW, setCanvasW] = useState(0)
-  const [canvasH, setCanvasH] = useState(0)
+  const wrapRef = useRef<HTMLDivElement>(null)
   const [selected, setSelected] = useState<'head'|'body'|null>(null)
   const [headPos, setHeadPos] = useState({ x: slide.headX??50, y: slide.headY??(isStory?40:38) })
   const [bodyPos, setBodyPos] = useState({ x: slide.bodyX??50, y: slide.bodyY??(isStory?55:58) })
   const [headSize, setHeadSize] = useState(slide.headSize??1.0)
   const [bodySize, setBodySize] = useState(slide.bodySize??1.0)
-  const dragging = useRef<{which:'head'|'body';mx:number;my:number;ox:number;oy:number}|null>(null)
+  const dragging = useRef<{which:'head'|'body';startX:number;startY:number;startPosX:number;startPosY:number}|null>(null)
+  const renderRef = useRef<{headPos:{x:number,y:number};bodyPos:{x:number,y:number};selected:'head'|'body'|null}>({headPos:{x:50,y:38},bodyPos:{x:50,y:58},selected:null})
+  const rafRef = useRef<number>(0)
+  const accent = (theme==='bizbay'||theme==='bizbay_light') ? '#00BCD4' : '#CC3333'
 
-  // Reset when slide changes
+  // Sync from props when slide changes
   useEffect(()=>{
-    setHeadPos({ x:slide.headX??50, y:slide.headY??(isStory?40:38) })
-    setBodyPos({ x:slide.bodyX??50, y:slide.bodyY??(isStory?55:58) })
-    setHeadSize(slide.headSize??1.0)
-    setBodySize(slide.bodySize??1.0)
+    const hp = { x:slide.headX??50, y:slide.headY??(isStory?40:38) }
+    const bp = { x:slide.bodyX??50, y:slide.bodyY??(isStory?55:58) }
+    setHeadPos(hp); setBodyPos(bp)
+    setHeadSize(slide.headSize??1.0); setBodySize(slide.bodySize??1.0)
     setSelected(null)
+    renderRef.current = { headPos:hp, bodyPos:bp, selected:null }
   },[slide.headline, slide.body, slide.mode])
 
-  // Measure canvas element size after render
-  useEffect(()=>{
-    if(!canvasRef.current) return
-    const obs = new ResizeObserver(()=>{
-      if(canvasRef.current){
-        setCanvasW(canvasRef.current.offsetWidth)
-        setCanvasH(canvasRef.current.offsetHeight)
-      }
-    })
-    obs.observe(canvasRef.current)
-    return ()=>obs.disconnect()
-  },[])
+  // Draw — uses renderSlide (EXACT same as export)
+  const draw = useCallback(async()=>{
+    const canvas = canvasRef.current; if(!canvas) return
+    const W = canvas.width
+    const H = isStory ? Math.round(W*16/9) : Math.round(W*1350/1080)
+    if(canvas.height !== H) canvas.height = H
 
-  // Redraw canvas when slide changes
-  useEffect(()=>{
-    if(!canvasRef.current) return
-    const bgSrc = slide.uploadedBg || slide.bgImage
-    const draw = () => { if(canvasRef.current) drawThumb(slide,0,total,theme,fs,canvasRef.current,imgRef.current) }
-    const run = () => {
-      if(bgSrc && (!imgRef.current || imgRef.current.src !== bgSrc)){
-        const img = new Image(); img.crossOrigin='anonymous'
-        img.onload=()=>{ imgRef.current=img; draw() }
-        img.onerror=()=>{ imgRef.current=null; draw() }
-        img.src = bgSrc
-      } else draw()
+    // Build slide with current drag positions
+    const s: Slide = {
+      ...slide,
+      headX: renderRef.current.headPos.x,
+      headY: renderRef.current.headPos.y,
+      bodyX: renderRef.current.bodyPos.x,
+      bodyY: renderRef.current.bodyPos.y,
     }
-    if(document.fonts?.ready) document.fonts.ready.then(run); else run()
-  })
 
-  function startDrag(e: React.PointerEvent, which: 'head'|'body'){
-    e.preventDefault(); e.stopPropagation()
-    setSelected(which)
-    const pos = which==='head' ? headPos : bodyPos
-    dragging.current = { which, mx:e.clientX, my:e.clientY, ox:pos.x, oy:pos.y }
-    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+    // Render using the exact export function
+    const dataUrl = await renderSlide(s, 0, total, theme, fs, W, H)
+
+    // Draw result onto canvas
+    const img = new Image()
+    img.onload = () => {
+      const ctx = canvas.getContext('2d')!
+      ctx.drawImage(img, 0, 0, W, H)
+
+      // Draw selection indicator on top
+      const sel = renderRef.current.selected
+      if(sel) {
+        const pos = sel==='head' ? renderRef.current.headPos : renderRef.current.bodyPos
+        const px = pos.x/100*W
+        const py = pos.y/100*H
+        const col = sel==='head' ? accent : '#60C8FF'
+        ctx.strokeStyle = col
+        ctx.lineWidth = 2
+        ctx.setLineDash([6,3])
+        ctx.strokeRect(px - W*0.35, py - H*0.06, W*0.7, H*0.12)
+        ctx.setLineDash([])
+        // Label
+        ctx.fillStyle = col
+        ctx.font = `bold ${Math.round(W*0.025)}px Arial`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'bottom'
+        ctx.fillText(sel==='head'?'العنوان — اسحب':'النص — اسحب', px, py - H*0.065)
+      }
+    }
+    img.src = dataUrl
+  }, [slide, theme, fs, total, isStory, accent])
+
+  useEffect(()=>{ draw() },[draw])
+
+  // Hit test — which text block was tapped?
+  function hitTest(px: number, py: number, canvasW: number, canvasH: number): 'head'|'body'|null {
+    const hp = renderRef.current.headPos
+    const bp = renderRef.current.bodyPos
+    const hx = hp.x/100*canvasW, hy = hp.y/100*canvasH
+    const bx = bp.x/100*canvasW, by = bp.y/100*canvasH
+    const hitR = canvasW*0.35, hitH = canvasH*0.1
+    if(Math.abs(px-hx) < hitR && Math.abs(py-hy) < hitH) return 'head'
+    if(slide.body && Math.abs(px-bx) < hitR && Math.abs(py-by) < hitH) return 'body'
+    return null
   }
 
-  function onMove(e: React.PointerEvent){
-    if(!dragging.current || !canvasW || !canvasH) return
-    const dx = (e.clientX - dragging.current.mx) / canvasW * 100
-    const dy = (e.clientY - dragging.current.my) / canvasH * 100
-    const nx = Math.max(5, Math.min(95, dragging.current.ox + dx))
-    const ny = Math.max(5, Math.min(95, dragging.current.oy + dy))
-    if(dragging.current.which==='head') setHeadPos({x:nx,y:ny})
-    else setBodyPos({x:nx,y:ny})
+  function getCanvasXY(e: React.PointerEvent): {x:number,y:number,w:number,h:number} {
+    const canvas = canvasRef.current!
+    const rect = canvas.getBoundingClientRect()
+    const scaleX = canvas.width / rect.width
+    const scaleY = canvas.height / rect.height
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY,
+      w: canvas.width,
+      h: canvas.height,
+    }
   }
 
-  function onUp(){
+  function onPointerDown(e: React.PointerEvent) {
+    e.preventDefault()
+    const {x,y,w,h} = getCanvasXY(e)
+    const hit = hitTest(x, y, w, h)
+    const pos = hit==='head' ? renderRef.current.headPos : renderRef.current.bodyPos
+    if(hit) {
+      setSelected(hit)
+      renderRef.current.selected = hit
+      dragging.current = { which:hit, startX:e.clientX, startY:e.clientY, startPosX:pos.x, startPosY:pos.y }
+      ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+    } else {
+      setSelected(null)
+      renderRef.current.selected = null
+      draw()
+    }
+  }
+
+  function onPointerMove(e: React.PointerEvent) {
+    if(!dragging.current || !canvasRef.current) return
+    const canvas = canvasRef.current
+    const rect = canvas.getBoundingClientRect()
+    const dx = (e.clientX - dragging.current.startX) / rect.width * 100
+    const dy = (e.clientY - dragging.current.startY) / rect.height * 100
+    const nx = Math.max(10, Math.min(90, dragging.current.startPosX + dx))
+    const ny = Math.max(10, Math.min(90, dragging.current.startPosY + dy))
+    if(dragging.current.which==='head') {
+      renderRef.current.headPos = {x:nx, y:ny}
+      setHeadPos({x:nx,y:ny})
+    } else {
+      renderRef.current.bodyPos = {x:nx, y:ny}
+      setBodyPos({x:nx,y:ny})
+    }
+    // Redraw on next frame
+    cancelAnimationFrame(rafRef.current)
+    rafRef.current = requestAnimationFrame(()=>draw())
+  }
+
+  function onPointerUp() {
     if(!dragging.current) return
-    if(dragging.current.which==='head') onUpdate({headX:Math.round(headPos.x), headY:Math.round(headPos.y)})
-    else onUpdate({bodyX:Math.round(bodyPos.x), bodyY:Math.round(bodyPos.y)})
+    if(dragging.current.which==='head') {
+      onUpdate({headX:Math.round(renderRef.current.headPos.x), headY:Math.round(renderRef.current.headPos.y)})
+    } else {
+      onUpdate({bodyX:Math.round(renderRef.current.bodyPos.x), bodyY:Math.round(renderRef.current.bodyPos.y)})
+    }
     dragging.current = null
   }
-
-  const accent = (theme==='bizbay'||theme==='bizbay_light') ? '#00BCD4' : '#CC3333'
-  const headlineClean = slide.headline.replace(/\*+/g,'')
-  // Canvas dimensions
-  const slideH = isStory ? Math.round(canvasW * 16/9) : Math.round(canvasW * 1350/1080)
 
   return (
     <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:'#0A0A0A'}}>
       {/* Toolbar */}
-      <div style={{height:42,display:'flex',alignItems:'center',gap:8,padding:'0 12px',flexShrink:0,borderBottom:'1px solid rgba(255,255,255,0.05)',justifyContent:'center'}}>
+      <div style={{height:42,display:'flex',alignItems:'center',gap:8,padding:'0 12px',flexShrink:0,borderBottom:'1px solid rgba(255,255,255,0.06)',justifyContent:'center'}}>
         {selected ? (
           <>
-            <span style={{fontSize:11,color:selected==='head'?accent:'#60C8FF',fontWeight:800,minWidth:40}}>{selected==='head'?'العنوان':'النص'}</span>
+            <span style={{fontSize:11,color:selected==='head'?accent:'#60C8FF',fontWeight:800}}>{selected==='head'?'العنوان':'النص'}</span>
             <button onClick={()=>{const ns=Math.max(0.4,(selected==='head'?headSize:bodySize)-0.1); if(selected==='head'){setHeadSize(ns);onUpdate({headSize:ns})} else{setBodySize(ns);onUpdate({bodySize:ns})}}}
-              style={{width:30,height:30,background:'#222',border:'1px solid #333',borderRadius:6,color:'#aaa',fontSize:20,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>−</button>
-            <span style={{fontSize:12,color:'#F0EDE8',fontWeight:800,minWidth:38,textAlign:'center'}}>{Math.round((selected==='head'?headSize:bodySize)*100)}%</span>
+              style={{width:32,height:32,background:'#222',border:'1px solid #333',borderRadius:8,color:'#ccc',fontSize:22,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>−</button>
+            <span style={{fontSize:13,color:'#F0EDE8',fontWeight:800,minWidth:42,textAlign:'center'}}>{Math.round((selected==='head'?headSize:bodySize)*100)}%</span>
             <button onClick={()=>{const ns=Math.min(2.5,(selected==='head'?headSize:bodySize)+0.1); if(selected==='head'){setHeadSize(ns);onUpdate({headSize:ns})} else{setBodySize(ns);onUpdate({bodySize:ns})}}}
-              style={{width:30,height:30,background:'#222',border:'1px solid #333',borderRadius:6,color:'#aaa',fontSize:20,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>+</button>
+              style={{width:32,height:32,background:'#222',border:'1px solid #333',borderRadius:8,color:'#ccc',fontSize:22,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>+</button>
             <button onClick={()=>{if(selected==='head'){setHeadSize(1.0);onUpdate({headSize:1.0})}else{setBodySize(1.0);onUpdate({bodySize:1.0})}}}
-              style={{padding:'4px 8px',background:'#222',border:'1px solid #333',borderRadius:6,color:'#555',fontSize:10,cursor:'pointer'}}>↺</button>
-            <button onClick={()=>setSelected(null)}
-              style={{padding:'4px 8px',background:'#222',border:'1px solid #333',borderRadius:6,color:'#555',fontSize:10,cursor:'pointer'}}>✕</button>
+              style={{padding:'6px 10px',background:'#222',border:'1px solid #333',borderRadius:8,color:'#555',fontSize:11,cursor:'pointer'}}>↺</button>
+            <button onClick={()=>{setSelected(null);renderRef.current.selected=null;draw()}}
+              style={{padding:'6px 10px',background:'#222',border:'1px solid #333',borderRadius:8,color:'#555',fontSize:11,cursor:'pointer'}}>✕</button>
           </>
         ) : (
-          <span style={{fontSize:10,color:'#333'}}>اضغط على العنوان أو النص في الشريحة ← اسحبه أو غيّر حجمه</span>
+          <span style={{fontSize:10,color:'#333'}}>اضغط على النص في الشريحة للتحريك · اضغط وتحريك للسحب</span>
         )}
       </div>
 
-      {/* Canvas + drag overlays */}
-      <div ref={wrapRef}
-        onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onUp}
-        onClick={e=>{ if(e.target===wrapRef.current) setSelected(null) }}
-        style={{flex:1,overflow:'auto',display:'flex',alignItems:'center',justifyContent:'center',padding:16,position:'relative'}}>
-
-        <div style={{position:'relative',flexShrink:0, height:'100%', maxWidth:'100%',
-          width:`calc(min(100%, (100vh - 200px) * ${isStory?'0.5625':'0.8'}))`
-        }}>
-          {/* Actual canvas — WYSIWYG */}
-          <canvas ref={canvasRef}
-            width={isStory?405:432} height={isStory?720:540}
-            style={{width:'100%',height:'auto',display:'block',borderRadius:12,boxShadow:'0 6px 40px rgba(0,0,0,0.8)'}}
-          />
-
-          {/* Drag overlay — only shown when canvas has size */}
-          {canvasW > 0 && <>
-            {/* Guide lines while dragging */}
-            {dragging.current && <div style={{position:'absolute',inset:0,borderRadius:12,pointerEvents:'none',zIndex:5}}>
-              <div style={{position:'absolute',left:'50%',top:0,bottom:0,width:1,background:'rgba(255,255,255,0.25)'}}/>
-              <div style={{position:'absolute',top:'33%',left:0,right:0,height:1,background:'rgba(255,255,255,0.25)'}}/>
-              <div style={{position:'absolute',top:'66%',left:0,right:0,height:1,background:'rgba(255,255,255,0.25)'}}/>
-            </div>}
-
-            {/* HEADLINE handle */}
-            <div onPointerDown={e=>startDrag(e,'head')}
-              style={{position:'absolute',
-                left:`${headPos.x}%`, top:`${headPos.y}%`,
-                transform:'translate(-50%,-50%)',
-                cursor:'grab', touchAction:'none', zIndex:selected==='head'?10:6,
-                maxWidth:'88%', textAlign:'center',
-              }}>
-              <div style={{
-                border:selected==='head'?`2px solid ${accent}`:`1.5px dashed ${accent}66`,
-                borderRadius:6, padding:'3px 6px',
-                background:selected==='head'?`${accent}22`:'transparent',
-                transition:'background 0.15s, border-color 0.15s',
-              }}>
-                {selected==='head' && <div style={{position:'absolute',top:-18,left:'50%',transform:'translateX(-50%)',fontSize:9,color:accent,fontWeight:800,whiteSpace:'nowrap',background:'#111',padding:'1px 5px',borderRadius:3,zIndex:20}}>↕ ↔ اسحب</div>}
-                <div style={{
-                  fontFamily:"'Cairo',sans-serif", fontWeight:900,
-                  fontSize:`${Math.max(10, canvasW * 0.065 * headSize)}px`,
-                  color:'transparent', lineHeight:1.35, direction:'rtl',
-                  wordBreak:'break-word', whiteSpace:'pre-wrap',
-                  // Invisible text — just for hit area sizing
-                  WebkitTextStroke:`1px ${accent}44`,
-                }}>{headlineClean}</div>
-              </div>
-            </div>
-
-            {/* BODY handle */}
-            {slide.body && (
-              <div onPointerDown={e=>startDrag(e,'body')}
-                style={{position:'absolute',
-                  left:`${bodyPos.x}%`, top:`${bodyPos.y}%`,
-                  transform:'translate(-50%,-50%)',
-                  cursor:'grab', touchAction:'none', zIndex:selected==='body'?10:6,
-                  maxWidth:'88%', textAlign:'center',
-                }}>
-                <div style={{
-                  border:selected==='body'?'2px solid #60C8FF':'1.5px dashed rgba(96,200,255,0.4)',
-                  borderRadius:6, padding:'3px 6px',
-                  background:selected==='body'?'rgba(96,200,255,0.1)':'transparent',
-                  transition:'background 0.15s, border-color 0.15s',
-                }}>
-                  {selected==='body' && <div style={{position:'absolute',top:-18,left:'50%',transform:'translateX(-50%)',fontSize:9,color:'#60C8FF',fontWeight:800,whiteSpace:'nowrap',background:'#111',padding:'1px 5px',borderRadius:3,zIndex:20}}>↕ ↔ اسحب</div>}
-                  <div style={{
-                    fontFamily:"'Cairo',sans-serif", fontWeight:500,
-                    fontSize:`${Math.max(7, canvasW * 0.04 * bodySize)}px`,
-                    color:'transparent', lineHeight:1.6, direction:'rtl',
-                    wordBreak:'break-word', whiteSpace:'pre-wrap',
-                    WebkitTextStroke:'1px rgba(96,200,255,0.4)',
-                  }}>{slide.body}</div>
-                </div>
-              </div>
-            )}
-          </>}
-        </div>
+      {/* Canvas — fills available space, correct aspect ratio */}
+      <div ref={wrapRef} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',padding:12}}>
+        <canvas
+          ref={canvasRef}
+          width={isStory?405:540}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerLeave={onPointerUp}
+          style={{
+            height:'100%',
+            maxWidth:'100%',
+            width:'auto',
+            borderRadius:12,
+            boxShadow:'0 6px 40px rgba(0,0,0,0.8)',
+            cursor:'crosshair',
+            touchAction:'none',
+            display:'block',
+          }}
+        />
       </div>
     </div>
   )
 }
 
+
+// ═══════════════════════════════════════════════════
+// DOWNLOAD MODAL — pick which slides to download
+// ═══════════════════════════════════════════════════
+function DownloadModal({ slides, theme, fs, brand, onClose }: {
+  slides: Slide[]; theme: Theme; fs: number; brand: string;
+  onClose: () => void;
+}) {
+  const [selected, setSelected] = useState<Set<number>>(new Set(slides.map((_,i)=>i)))
+  const [downloading, setDownloading] = useState(false)
+  const accent = (theme==='bizbay'||theme==='bizbay_light') ? '#00BCD4' : '#CC3333'
+
+  function toggle(i: number) {
+    setSelected(s => { const n = new Set(s); n.has(i) ? n.delete(i) : n.add(i); return n })
+  }
+
+  async function download() {
+    setDownloading(true)
+    const indices = [...selected].sort((a,b)=>a-b)
+    for(const i of indices) {
+      const sl = slides[i]
+      const isStory = sl.mode==='story'
+      const img = await renderSlide(sl, i, slides.length, theme, fs, 1080, isStory?Math.round(1080*16/9):1350)
+      const a = document.createElement('a'); a.href=img; a.download=`${brand}-slide-${i+1}.jpg`; a.click()
+      await new Promise(r=>setTimeout(r,200))
+    }
+    setDownloading(false); onClose()
+  }
+
+  return (
+    <div onClick={e=>{if(e.target===e.currentTarget)onClose()}} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.9)',backdropFilter:'blur(16px)',zIndex:2000,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
+      <div style={{background:'#161616',border:'1px solid rgba(255,255,255,0.08)',borderTop:`3px solid ${accent}`,borderRadius:'20px 20px 0 0',width:'100%',maxWidth:560,maxHeight:'85dvh',display:'flex',flexDirection:'column'}}>
+        <div style={{padding:'16px 20px 12px',flexShrink:0}}>
+          <div style={{width:36,height:4,background:'rgba(255,255,255,0.12)',borderRadius:2,margin:'0 auto 14px'}}/>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+            <div style={{fontFamily:"'Tajawal',sans-serif",fontWeight:900,fontSize:17}}>⬇️ تحميل الشرائح</div>
+            <button onClick={onClose} style={{...btnD,width:32,height:32,padding:0,justifyContent:'center'}}>✕</button>
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            <button onClick={()=>setSelected(new Set(slides.map((_,i)=>i)))} style={{...btnD,fontSize:11,padding:'5px 10px'}}>✓ كل الشرائح</button>
+            <button onClick={()=>setSelected(new Set())} style={{...btnD,fontSize:11,padding:'5px 10px'}}>✕ إلغاء الكل</button>
+          </div>
+        </div>
+        <div style={{flex:1,overflowY:'auto',padding:'0 20px 20px'}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(110px,1fr))',gap:10,marginBottom:16}}>
+            {slides.map((sl,i)=>(
+              <div key={i} onClick={()=>toggle(i)} style={{position:'relative',cursor:'pointer',borderRadius:10,overflow:'hidden',border:`2px solid ${selected.has(i)?accent:'rgba(255,255,255,0.08)'}`,opacity:selected.has(i)?1:0.45,transition:'all .15s'}}>
+                <SlideThumb slide={sl} idx={i} total={slides.length} theme={theme} fs={fs} active={false} onClick={()=>toggle(i)} size={110}/>
+                <div style={{position:'absolute',top:5,right:5,width:20,height:20,borderRadius:'50%',background:selected.has(i)?accent:'rgba(0,0,0,0.6)',border:`2px solid ${selected.has(i)?accent:'rgba(255,255,255,0.3)'}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,color:'#fff',fontWeight:800}}>{selected.has(i)?'✓':''}</div>
+                <div style={{position:'absolute',bottom:0,left:0,right:0,textAlign:'center',fontSize:10,color:'rgba(255,255,255,0.7)',fontWeight:700,background:'linear-gradient(to top,rgba(0,0,0,0.7),transparent)',padding:'8px 4px 4px'}}>{i+1}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{display:'flex',gap:10}}>
+            <button onClick={onClose} style={{...btnD,flex:1,justifyContent:'center'}}>إلغاء</button>
+            <button onClick={download} disabled={downloading||selected.size===0} style={{...btnR,flex:2,justifyContent:'center',background:accent,boxShadow:`0 3px 14px ${accent}44`,opacity:(downloading||selected.size===0)?0.5:1}}>
+              {downloading?<><span style={{width:14,height:14,border:'2px solid rgba(255,255,255,0.3)',borderTopColor:'#fff',borderRadius:'50%',animation:'spin .6s linear infinite',display:'inline-block'}}/> يحمّل...</>:`⬇️ تحميل ${selected.size} شريحة`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // BIZ4SALE REEL GENERATOR
 // Fill form → renders branded business-for-sale card
@@ -1339,6 +1414,7 @@ export default function App(){
   // New feature states
   const [brandingOpen, setBrandingOpen] = useState(false)
   const [biz4saleOpen, setBiz4saleOpen] = useState(false)
+  const [downloadOpen, setDownloadOpen] = useState(false)
   const uploadBgRef = useRef<HTMLInputElement>(null)
 
   // AI Chat state
@@ -1663,7 +1739,7 @@ Then: what you changed (1 line, in the same language the user wrote in).`
           {activeBrand==='bizbay'&&<button onClick={()=>setBiz4saleOpen(true)} style={{...btnD,padding:'7px 11px',fontSize:11,color:'#00BCD4',borderColor:'rgba(0,188,212,0.3)',fontWeight:800}}>🏪 4Sale</button>}
           <button onClick={openAi} style={{...btnR,padding:'8px 13px',fontSize:12,background:activeBrand==='bizbay'?'#00BCD4':'#CC3333',boxShadow:activeBrand==='bizbay'?'0 3px 14px rgba(0,188,212,0.35)':'0 3px 14px rgba(204,51,51,0.35)'}}>✦ AI</button>
           {slides.length>0&&<>
-            <button onClick={downloadSlides} style={{...btnD,padding:'8px 11px',fontSize:15,minWidth:38,justifyContent:'center'}}>⬇️</button>
+            <button onClick={()=>setDownloadOpen(true)} style={{...btnD,padding:'8px 11px',fontSize:15,minWidth:38,justifyContent:'center'}}>⬇️</button>
             <button onClick={()=>setSaveOpen(true)} style={{...btnD,padding:'8px 11px',fontSize:15,minWidth:38,justifyContent:'center'}}>💾</button>
           </>}
         </>}
@@ -1713,14 +1789,28 @@ Then: what you changed (1 line, in the same language the user wrote in).`
                 </div>
               </div>
 
-              {/* CENTER — inline Canva-style editor */}
-              <div className={`pnl pnl-C ${mPanel==='preview'?'m-on':''}`} style={{flex:1,background:'#0D0D0D',backgroundImage:'radial-gradient(circle at 20% 60%,rgba(204,51,51,0.05),transparent 50%)',display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0}}>
-                <div style={{padding:'7px 12px',borderBottom:'1px solid rgba(255,255,255,0.06)',display:'flex',alignItems:'center',gap:8,background:'rgba(13,13,13,0.9)',flexShrink:0}}>
-                  <button onClick={()=>setActive(Math.max(0,active-1))} disabled={active===0} style={{...btnD,width:32,height:32,padding:0,justifyContent:'center',opacity:active===0?.3:1,fontSize:18}}>‹</button>
-                  <span style={{fontSize:13,color:'#555',fontWeight:800,flex:1,textAlign:'center'}}>{slides.length?`${active+1} / ${slides.length}`:'—'}</span>
-                  <button onClick={()=>setActive(Math.min(slides.length-1,active+1))} disabled={active>=slides.length-1} style={{...btnD,width:32,height:32,padding:0,justifyContent:'center',opacity:active>=slides.length-1?.3:1,fontSize:18}}>›</button>
+              {/* CENTER — WYSIWYG editor */}
+              <div className={`pnl pnl-C ${mPanel==='preview'?'m-on':''}`} style={{flex:1,background:'#0D0D0D',display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0}}>
+                {/* Top bar: slide nav */}
+                <div style={{padding:'6px 10px',borderBottom:'1px solid rgba(255,255,255,0.06)',display:'flex',alignItems:'center',gap:6,background:'rgba(13,13,13,0.95)',flexShrink:0}}>
+                  <button onClick={()=>setActive(Math.max(0,active-1))} disabled={active===0} style={{...btnD,width:30,height:30,padding:0,justifyContent:'center',opacity:active===0?.3:1,fontSize:18}}>‹</button>
+                  <span style={{fontSize:12,color:'#555',fontWeight:800,minWidth:50,textAlign:'center'}}>{slides.length?`${active+1}/${slides.length}`:'—'}</span>
+                  <button onClick={()=>setActive(Math.min(slides.length-1,active+1))} disabled={active>=slides.length-1} style={{...btnD,width:30,height:30,padding:0,justifyContent:'center',opacity:active>=slides.length-1?.3:1,fontSize:18}}>›</button>
+                  {/* Thumbnail strip */}
+                  <div style={{flex:1,display:'flex',gap:6,overflowX:'auto',padding:'2px 4px'}}>
+                    {slides.map((sl,i)=>(
+                      <div key={i} onClick={()=>setActive(i)} style={{position:'relative',flexShrink:0,cursor:'pointer'}}>
+                        <SlideThumb
+                          slide={sl} idx={i} total={slides.length} theme={theme} fs={fs}
+                          active={active===i} onClick={()=>setActive(i)}
+                          size={sl.mode==='story'?40:50}/>
+                      </div>
+                    ))}
+                  </div>
+                  <button onClick={()=>setDownloadOpen(true)} style={{...btnD,padding:'6px 10px',fontSize:11,gap:4}} title="تحميل">⬇️</button>
                   <button className="m-only" onClick={()=>setMPanel('design')} style={{...btnD,padding:'6px 10px',fontSize:12}}>✏️</button>
                 </div>
+
                 {slides.length===0?(
                   <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center'}}>
                     <div style={{textAlign:'center',color:'#444',padding:20}}>
@@ -1728,22 +1818,12 @@ Then: what you changed (1 line, in the same language the user wrote in).`
                       <div style={{fontSize:15,color:'#555',fontWeight:800,marginBottom:8}}>ابدأ الكاروسيل أو الستوري</div>
                       <div style={{display:'flex',gap:8,justifyContent:'center',flexWrap:'wrap'}}>
                         <button onClick={openAi} style={btnR}>✦ توليد AI</button>
-                        <button onClick={()=>setBrandingOpen(true)} style={{...btnD,color:'#CC3333',borderColor:'rgba(204,51,51,0.3)'}}>🎨 برندة</button>
+                        <button onClick={()=>setBrandingOpen(true)} style={{...btnD,color:'#CC3333',borderColor:'rgba(204,51,51,0.3)'}}>📸 برندة</button>
                       </div>
                     </div>
                   </div>
                 ):(
-                  <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
-                    {/* Slide strip — small thumbnails */}
-                    <div style={{display:'flex',gap:8,padding:'8px 12px',overflowX:'auto',flexShrink:0,borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
-                      {slides.map((sl,i)=>(
-                        <SlideThumb key={i+'-'+theme+'-'+fs+'-'+(sl.mode||'carousel')+'-'+(sl.uploadedBg?'u':sl.bgImage||'')+'-'+(sl.headX||0)+'-'+(sl.headY||0)}
-                          slide={sl} idx={i} total={slides.length} theme={theme} fs={fs} active={active===i} onClick={()=>setActive(i)} size={60}/>
-                      ))}
-                    </div>
-                    {/* Main inline editor */}
-                    {sl && <InlineEditor slide={sl} theme={theme} fs={fs} total={slides.length} onUpdate={upd}/>}
-                  </div>
+                  sl && <InlineEditor slide={sl} theme={theme} fs={fs} total={slides.length} onUpdate={upd}/>
                 )}
               </div>
 
@@ -2123,6 +2203,14 @@ Then: what you changed (1 line, in the same language the user wrote in).`
       )}
 
       {biz4saleOpen && <Biz4SaleModal onClose={()=>setBiz4saleOpen(false)}/>}
+
+      {/* DOWNLOAD MODAL */}
+      {downloadOpen && (
+        <DownloadModal
+          slides={slides} theme={theme} fs={fs} brand={activeBrand==='bizbay'?'bizbay':'5gates'}
+          onClose={()=>setDownloadOpen(false)}
+        />
+      )}
 
       {toast&&<div style={{position:'fixed',bottom:72,left:'50%',transform:'translateX(-50%)',background:'#1A1A1A',border:'1px solid rgba(255,255,255,0.12)',borderRight:'3px solid #CC3333',color:'#F0EDE8',padding:'10px 20px',borderRadius:10,fontSize:13,zIndex:9999,boxShadow:'0 8px 28px rgba(0,0,0,0.7)',whiteSpace:'nowrap',fontFamily:"'Cairo',sans-serif"}}>{toast}</div>}
 
