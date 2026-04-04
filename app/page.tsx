@@ -125,16 +125,21 @@ async function renderSlide(slide:Slide,idx:number,total:number,theme:Theme,fontS
   ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText(brand.name,W/2,65)
 
   // Headline position - use headX/headY if set, otherwise fall back to textX/textY
-  const hxOff = (slide.headX ?? slide.textX ?? 0)/100*W*0.3
-  const hyOff = (slide.headY ?? slide.textY ?? 0)/100*CH*0.25
+  // headX/headY are absolute % positions (0-100) of canvas — set by InlineEditor drag
+  // If not set, fall back to textAlign-based positioning
+  const hasAbsPos = slide.headX !== undefined && slide.headY !== undefined
+  const headAbsX = (slide.headX??50)/100*W
+  const headAbsY = (slide.headY??(isStory?40:38))/100*CH
+  const hxOff = hasAbsPos ? 0 : (slide.textX??0)/100*W*0.3
+  const hyOff = hasAbsPos ? 0 : (slide.textY??0)/100*CH*0.25
   const vPos=slide.textAlign??'middle'
-  const baseY = isStory
+  const baseY = hasAbsPos ? headAbsY
+    : isStory
     ? (vPos==='top'?CH*0.15:vPos==='bottom'?CH*0.60:CH*0.32)
     : (vPos==='top'?CH*0.18:vPos==='bottom'?CH*0.55:CH*0.28)
 
-  // Native RTL rendering — ctx.direction=rtl + textAlign=right handles Arabic bidi correctly
-  // This fixes punctuation placement. Strip ** markers (UI-only, not rendered on canvas).
-  const hs=Math.round(88*fs),lh=hs*1.32,mx=W-160,rx=W-80+hxOff
+  // Proportional text layout — identical math to drawThumb for WYSIWYG consistency
+  const hs=Math.round(88*fs),lh=hs*1.32,mx=W*0.85,rx=hasAbsPos?(headAbsX+W*0.43):W*0.93+hxOff
   ctx.font=`900 ${hs}px 'Cairo',sans-serif`
   ctx.textAlign='right'; ctx.textBaseline='top'
   ctx.fillStyle=bgSrc?'#FFFFFF':t.text
@@ -150,8 +155,9 @@ async function renderSlide(slide:Slide,idx:number,total:number,theme:Theme,fontS
   for(const line of lines){ ctx.fillText(line.trim(),rx,ly); ly+=lh }
 
   if(slide.body){
-    const bxOff=(slide.bodyX??slide.textX??0)/100*W*0.3
-    const byOff=(slide.bodyY??slide.textY??0)/100*CH*0.25
+    const hasAbsBody = slide.bodyX !== undefined && slide.bodyY !== undefined
+    const bodyAbsX = (slide.bodyX??50)/100*W
+    const bodyAbsY = (slide.bodyY??(isStory?55:58))/100*CH
     const bs=Math.round(42*fs)
     ctx.font=`500 ${bs}px 'Cairo',sans-serif`
     ctx.fillStyle=bgSrc?'rgba(255,255,255,0.85)':t.sub
@@ -162,13 +168,14 @@ async function renderSlide(slide:Slide,idx:number,total:number,theme:Theme,fontS
       if(ctx.measureText(test).width>mx&&bc){blines.push(bc);bc=w}else bc=test
     }
     if(bc)blines.push(bc)
-    let by=ly+34+byOff*0.2
-    for(const b of blines.slice(0,4)){ ctx.fillText(b,W-80+bxOff,by); by+=bs*1.65 }
+    let by=hasAbsBody?bodyAbsY:ly+Math.round(18*fs)
+    const brx=hasAbsBody?(bodyAbsX+W*0.43):W*0.93
+    for(const b of blines.slice(0,4)){ ctx.fillText(b,brx,by); by+=bs*1.6 }
   }
 
-  const fy=CH-110
+  const fy=CH-CH*0.06
   ctx.font=`700 ${Math.round(26*fs)}px 'Cairo',sans-serif`; ctx.fillStyle=bgSrc?'rgba(255,255,255,0.4)':t.brand
-  ctx.textAlign='right'; ctx.textBaseline='middle'; ctx.fillText(slide.handle||brand.handle,W-80,fy+22)
+  ctx.textAlign='right'; ctx.textBaseline='middle'; ctx.fillText(slide.handle||brand.handle,W*0.93,fy)
   if(!isStory){
     const dc=Math.min(total,7),dw=14,aw=44,dh=14,dg=8; let dx=(W-(dc*dw+(dc-1)*dg+(aw-dw)))/2
     for(let d=0;d<dc;d++){
@@ -207,14 +214,17 @@ function drawThumb(slide:Slide,idx:number,total:number,theme:Theme,fs:number,can
     ctx.fillStyle=(slide.bgImage||slide.uploadedBg)?'rgba(255,255,255,0.5)':t.brand
   }
   ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText(brand2.name,W/2,65*H/(isStory?1920:1350))
-  const hxOff=(slide.headX??slide.textX??0)/100*W*0.3
-  const hyOff=(slide.headY??slide.textY??0)/100*H*0.25
+  const hasAbsPos2 = slide.headX !== undefined && slide.headY !== undefined
+  const headAbsX2 = (slide.headX??50)/100*W
+  const headAbsY2 = (slide.headY??(isStory?40:38))/100*H
+  const hxOff=(hasAbsPos2?0:(slide.textX??0)/100*W*0.3)
   const vPos=slide.textAlign??'middle'
-  const baseY = isStory
+  const baseY = hasAbsPos2 ? headAbsY2
+    : isStory
     ? (vPos==='top'?H*0.15:vPos==='bottom'?H*0.60:H*0.32)
     : (vPos==='top'?H*0.18:vPos==='bottom'?H*0.55:H*0.28)
   // Native RTL rendering — same approach as renderSlide
-  const hs=Math.round(88*pfs),lh=hs*1.32,mx=W*0.85,rx=W*0.93+hxOff
+  const hs=Math.round(88*pfs),lh=hs*1.32,mx=W*0.85,rx=hasAbsPos2?(headAbsX2+W*0.43):W*0.93+hxOff
   ctx.font=`900 ${hs}px ${F}`
   ctx.textAlign='right'; ctx.textBaseline='top'
   ctx.fillStyle=(slide.bgImage||slide.uploadedBg)?'#FFFFFF':t.text
@@ -230,8 +240,9 @@ function drawThumb(slide:Slide,idx:number,total:number,theme:Theme,fs:number,can
   for(const line of lines){ ctx.fillText(line.trim(),rx,ly); ly+=lh }
 
   if(slide.body){
-    const bxOff=(slide.bodyX??slide.textX??0)/100*W*0.3
-    const byOff=(slide.bodyY??slide.textY??0)/100*H*0.25
+    const hasAbsBody2 = slide.bodyX !== undefined && slide.bodyY !== undefined
+    const bodyAbsX2 = (slide.bodyX??50)/100*W
+    const bodyAbsY2 = (slide.bodyY??(isStory?55:58))/100*H
     const bs=Math.round(42*pfs)
     ctx.font=`500 ${bs}px ${F}`
     ctx.fillStyle=(slide.bgImage||slide.uploadedBg)?'rgba(255,255,255,0.85)':t.sub
@@ -242,8 +253,9 @@ function drawThumb(slide:Slide,idx:number,total:number,theme:Theme,fs:number,can
       if(ctx.measureText(test).width>mx&&bc){blines.push(bc);bc=w}else bc=test
     }
     if(bc)blines.push(bc)
-    let by=ly+Math.round(18*pfs)
-    for(const b of blines.slice(0,4)){ ctx.fillText(b,W*0.93+bxOff,by); by+=bs*1.6 }
+    let by=hasAbsBody2?bodyAbsY2:ly+Math.round(18*pfs)
+    const brx2=hasAbsBody2?(bodyAbsX2+W*0.43):W*0.93
+    for(const b of blines.slice(0,4)){ ctx.fillText(b,brx2,by); by+=bs*1.6 }
   }
 }
 
@@ -758,14 +770,21 @@ const btnD:React.CSSProperties={background:'#2A2A2A',color:'#888',border:'1px so
 // INLINE EDITOR — Canva-style drag & resize text
 // directly on the slide preview in the main screen
 // ═══════════════════════════════════════════════════
-function InlineEditor({ slide, theme, fs, onUpdate }: {
-  slide: Slide; theme: Theme; fs: number;
+// ═══════════════════════════════════════════════════
+// CANVAS PREVIEW EDITOR
+// Uses actual SlideThumb canvas (WYSIWYG) + HTML
+// drag handles layered precisely on top
+// ═══════════════════════════════════════════════════
+function InlineEditor({ slide, theme, fs, onUpdate, total }: {
+  slide: Slide; theme: Theme; fs: number; total: number;
   onUpdate: (u: Partial<Slide>) => void;
 }) {
   const isStory = slide.mode === 'story'
-  const t = T[theme]
-  const hasBg = !!(slide.uploadedBg || slide.bgImage)
-  const containerRef = useRef<HTMLDivElement>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const imgRef = useRef<HTMLImageElement|null>(null)
+  const [canvasW, setCanvasW] = useState(0)
+  const [canvasH, setCanvasH] = useState(0)
   const [selected, setSelected] = useState<'head'|'body'|null>(null)
   const [headPos, setHeadPos] = useState({ x: slide.headX??50, y: slide.headY??(isStory?40:38) })
   const [bodyPos, setBodyPos] = useState({ x: slide.bodyX??50, y: slide.bodyY??(isStory?55:58) })
@@ -773,17 +792,45 @@ function InlineEditor({ slide, theme, fs, onUpdate }: {
   const [bodySize, setBodySize] = useState(slide.bodySize??1.0)
   const dragging = useRef<{which:'head'|'body';mx:number;my:number;ox:number;oy:number}|null>(null)
 
+  // Reset when slide changes
   useEffect(()=>{
     setHeadPos({ x:slide.headX??50, y:slide.headY??(isStory?40:38) })
     setBodyPos({ x:slide.bodyX??50, y:slide.bodyY??(isStory?55:58) })
     setHeadSize(slide.headSize??1.0)
     setBodySize(slide.bodySize??1.0)
     setSelected(null)
-  },[slide.headline,slide.body])
+  },[slide.headline, slide.body, slide.mode])
 
-  function getRect(){ return containerRef.current?.getBoundingClientRect()??{width:1,height:1} }
+  // Measure canvas element size after render
+  useEffect(()=>{
+    if(!canvasRef.current) return
+    const obs = new ResizeObserver(()=>{
+      if(canvasRef.current){
+        setCanvasW(canvasRef.current.offsetWidth)
+        setCanvasH(canvasRef.current.offsetHeight)
+      }
+    })
+    obs.observe(canvasRef.current)
+    return ()=>obs.disconnect()
+  },[])
 
-  function startDrag(e:React.PointerEvent, which:'head'|'body'){
+  // Redraw canvas when slide changes
+  useEffect(()=>{
+    if(!canvasRef.current) return
+    const bgSrc = slide.uploadedBg || slide.bgImage
+    const draw = () => { if(canvasRef.current) drawThumb(slide,0,total,theme,fs,canvasRef.current,imgRef.current) }
+    const run = () => {
+      if(bgSrc && (!imgRef.current || imgRef.current.src !== bgSrc)){
+        const img = new Image(); img.crossOrigin='anonymous'
+        img.onload=()=>{ imgRef.current=img; draw() }
+        img.onerror=()=>{ imgRef.current=null; draw() }
+        img.src = bgSrc
+      } else draw()
+    }
+    if(document.fonts?.ready) document.fonts.ready.then(run); else run()
+  })
+
+  function startDrag(e: React.PointerEvent, which: 'head'|'body'){
     e.preventDefault(); e.stopPropagation()
     setSelected(which)
     const pos = which==='head' ? headPos : bodyPos
@@ -791,124 +838,127 @@ function InlineEditor({ slide, theme, fs, onUpdate }: {
     ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
   }
 
-  function onMove(e:React.PointerEvent){
-    if(!dragging.current) return
-    const r = getRect()
-    const dx = (e.clientX-dragging.current.mx)/r.width*100
-    const dy = (e.clientY-dragging.current.my)/r.height*100
-    const nx = Math.max(5,Math.min(95,dragging.current.ox+dx))
-    const ny = Math.max(5,Math.min(95,dragging.current.oy+dy))
+  function onMove(e: React.PointerEvent){
+    if(!dragging.current || !canvasW || !canvasH) return
+    const dx = (e.clientX - dragging.current.mx) / canvasW * 100
+    const dy = (e.clientY - dragging.current.my) / canvasH * 100
+    const nx = Math.max(5, Math.min(95, dragging.current.ox + dx))
+    const ny = Math.max(5, Math.min(95, dragging.current.oy + dy))
     if(dragging.current.which==='head') setHeadPos({x:nx,y:ny})
     else setBodyPos({x:nx,y:ny})
   }
 
   function onUp(){
     if(!dragging.current) return
-    if(dragging.current.which==='head') onUpdate({headX:Math.round(headPos.x),headY:Math.round(headPos.y)})
-    else onUpdate({bodyX:Math.round(bodyPos.x),bodyY:Math.round(bodyPos.y)})
+    if(dragging.current.which==='head') onUpdate({headX:Math.round(headPos.x), headY:Math.round(headPos.y)})
+    else onUpdate({bodyX:Math.round(bodyPos.x), bodyY:Math.round(bodyPos.y)})
     dragging.current = null
   }
 
   const accent = (theme==='bizbay'||theme==='bizbay_light') ? '#00BCD4' : '#CC3333'
   const headlineClean = slide.headline.replace(/\*+/g,'')
-  // Slide aspect: carousel=1080/1350=0.8, story=9/16=0.5625
-  const slideAR = isStory ? 9/16 : 1080/1350
+  // Canvas dimensions
+  const slideH = isStory ? Math.round(canvasW * 16/9) : Math.round(canvasW * 1350/1080)
 
   return (
-    <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',overflow:'hidden',background:'#0D0D0D',padding:'8px 8px 0'}}>
+    <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:'#0A0A0A'}}>
       {/* Toolbar */}
-      <div style={{height:40,display:'flex',alignItems:'center',gap:8,flexShrink:0,marginBottom:6,justifyContent:'center'}}>
+      <div style={{height:42,display:'flex',alignItems:'center',gap:8,padding:'0 12px',flexShrink:0,borderBottom:'1px solid rgba(255,255,255,0.05)',justifyContent:'center'}}>
         {selected ? (
           <>
-            <span style={{fontSize:11,color:selected==='head'?accent:'#60C8FF',fontWeight:800}}>{selected==='head'?'العنوان':'النص'}</span>
-            <div style={{display:'flex',alignItems:'center',gap:4,background:'#1E1E1E',borderRadius:8,padding:'3px 8px',border:'1px solid rgba(255,255,255,0.1)'}}>
-              <button onClick={()=>{const ns=Math.max(0.5,(selected==='head'?headSize:bodySize)-0.1);if(selected==='head'){setHeadSize(ns);onUpdate({headSize:ns})}else{setBodySize(ns);onUpdate({bodySize:ns})}}}
-                style={{background:'none',border:'none',color:'#aaa',fontSize:20,cursor:'pointer',padding:'0 2px',lineHeight:1,fontWeight:300}}>−</button>
-              <span style={{fontSize:12,color:'#F0EDE8',fontWeight:800,minWidth:36,textAlign:'center'}}>{Math.round((selected==='head'?headSize:bodySize)*100)}%</span>
-              <button onClick={()=>{const ns=Math.min(2.0,(selected==='head'?headSize:bodySize)+0.1);if(selected==='head'){setHeadSize(ns);onUpdate({headSize:ns})}else{setBodySize(ns);onUpdate({bodySize:ns})}}}
-                style={{background:'none',border:'none',color:'#aaa',fontSize:20,cursor:'pointer',padding:'0 2px',lineHeight:1,fontWeight:300}}>+</button>
-            </div>
-            <button onClick={()=>{if(selected==='head'){setHeadSize(1.0);onUpdate({headSize:1.0})}else{setBodySize(1.0);onUpdate({bodySize:1.0})}}} style={{background:'#222',border:'none',borderRadius:6,color:'#555',fontSize:11,cursor:'pointer',padding:'4px 8px'}}>↺</button>
-            <button onClick={()=>setSelected(null)} style={{background:'#222',border:'none',borderRadius:6,color:'#555',fontSize:11,cursor:'pointer',padding:'4px 8px'}}>✕</button>
+            <span style={{fontSize:11,color:selected==='head'?accent:'#60C8FF',fontWeight:800,minWidth:40}}>{selected==='head'?'العنوان':'النص'}</span>
+            <button onClick={()=>{const ns=Math.max(0.4,(selected==='head'?headSize:bodySize)-0.1); if(selected==='head'){setHeadSize(ns);onUpdate({headSize:ns})} else{setBodySize(ns);onUpdate({bodySize:ns})}}}
+              style={{width:30,height:30,background:'#222',border:'1px solid #333',borderRadius:6,color:'#aaa',fontSize:20,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>−</button>
+            <span style={{fontSize:12,color:'#F0EDE8',fontWeight:800,minWidth:38,textAlign:'center'}}>{Math.round((selected==='head'?headSize:bodySize)*100)}%</span>
+            <button onClick={()=>{const ns=Math.min(2.5,(selected==='head'?headSize:bodySize)+0.1); if(selected==='head'){setHeadSize(ns);onUpdate({headSize:ns})} else{setBodySize(ns);onUpdate({bodySize:ns})}}}
+              style={{width:30,height:30,background:'#222',border:'1px solid #333',borderRadius:6,color:'#aaa',fontSize:20,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>+</button>
+            <button onClick={()=>{if(selected==='head'){setHeadSize(1.0);onUpdate({headSize:1.0})}else{setBodySize(1.0);onUpdate({bodySize:1.0})}}}
+              style={{padding:'4px 8px',background:'#222',border:'1px solid #333',borderRadius:6,color:'#555',fontSize:10,cursor:'pointer'}}>↺</button>
+            <button onClick={()=>setSelected(null)}
+              style={{padding:'4px 8px',background:'#222',border:'1px solid #333',borderRadius:6,color:'#555',fontSize:10,cursor:'pointer'}}>✕</button>
           </>
         ) : (
-          <span style={{fontSize:10,color:'#333'}}>اضغط على النص في الشريحة للتحريك والتكبير</span>
+          <span style={{fontSize:10,color:'#333'}}>اضغط على العنوان أو النص في الشريحة ← اسحبه أو غيّر حجمه</span>
         )}
       </div>
 
-      {/* Slide — sized to fit available space keeping aspect ratio */}
-      <div style={{flex:1,width:'100%',display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',paddingBottom:8}}>
-        <div ref={containerRef}
-          onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onUp}
-          onClick={e=>{ if(e.target===containerRef.current) setSelected(null) }}
-          style={{
-            position:'relative',
-            // Height drives sizing — max out the available height, width follows AR
-            height:'100%',
-            maxWidth:`calc(100% * ${slideAR})`,
-            aspectRatio:`${slideAR}`,
-            borderRadius:12,
-            overflow:'hidden',
-            background:hasBg?'transparent':t.bg,
-            userSelect:'none', touchAction:'none',
-            boxShadow:'0 4px 32px rgba(0,0,0,0.7)',
-            flexShrink:0,
-          }}>
+      {/* Canvas + drag overlays */}
+      <div ref={wrapRef}
+        onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onUp}
+        onClick={e=>{ if(e.target===wrapRef.current) setSelected(null) }}
+        style={{flex:1,overflow:'auto',display:'flex',alignItems:'center',justifyContent:'center',padding:16,position:'relative'}}>
 
-          {hasBg && <>
-            <img src={slide.uploadedBg||slide.bgImage} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}} crossOrigin="anonymous"/>
-            <div style={{position:'absolute',inset:0,background:`rgba(0,0,0,${slide.overlayOpacity??0.72})`}}/>
-          </>}
-          <div style={{position:'absolute',inset:0,background:`radial-gradient(circle at 110% -10%, ${accent}33, transparent 60%)`,pointerEvents:'none'}}/>
+        <div style={{position:'relative',flexShrink:0, height:'100%', maxWidth:'100%',
+          width:`calc(min(100%, (100vh - 200px) * ${isStory?'0.5625':'0.8'}))`
+        }}>
+          {/* Actual canvas — WYSIWYG */}
+          <canvas ref={canvasRef}
+            width={isStory?405:432} height={isStory?720:540}
+            style={{width:'100%',height:'auto',display:'block',borderRadius:12,boxShadow:'0 6px 40px rgba(0,0,0,0.8)'}}
+          />
 
-          {/* Brand */}
-          <div style={{position:'absolute',top:'3%',left:'50%',transform:'translateX(-50%)',fontSize:'clamp(6px,1.5vw,12px)',fontWeight:900,color:hasBg?'rgba(255,255,255,0.4)':t.brand,letterSpacing:2,pointerEvents:'none',fontFamily:"'Tajawal',sans-serif",whiteSpace:'nowrap'}}>
-            {BRAND_META[theme]?.name||'5GATES'}
-          </div>
-          <div style={{position:'absolute',top:'4%',right:'4%',fontSize:'clamp(12px,3vw,28px)',pointerEvents:'none'}}>
-            {getIcon(slide.headline,slide.icon)}
-          </div>
+          {/* Drag overlay — only shown when canvas has size */}
+          {canvasW > 0 && <>
+            {/* Guide lines while dragging */}
+            {dragging.current && <div style={{position:'absolute',inset:0,borderRadius:12,pointerEvents:'none',zIndex:5}}>
+              <div style={{position:'absolute',left:'50%',top:0,bottom:0,width:1,background:'rgba(255,255,255,0.25)'}}/>
+              <div style={{position:'absolute',top:'33%',left:0,right:0,height:1,background:'rgba(255,255,255,0.25)'}}/>
+              <div style={{position:'absolute',top:'66%',left:0,right:0,height:1,background:'rgba(255,255,255,0.25)'}}/>
+            </div>}
 
-          {/* Guide lines while dragging */}
-          {dragging.current && <div style={{position:'absolute',inset:0,pointerEvents:'none'}}>
-            <div style={{position:'absolute',left:'50%',top:0,bottom:0,width:1,background:'rgba(255,255,255,0.2)'}}/>
-            <div style={{position:'absolute',top:'33%',left:0,right:0,height:1,background:'rgba(255,255,255,0.2)'}}/>
-            <div style={{position:'absolute',top:'66%',left:0,right:0,height:1,background:'rgba(255,255,255,0.2)'}}/>
-          </div>}
-
-          {/* HEADLINE */}
-          <div onPointerDown={e=>startDrag(e,'head')}
-            style={{position:'absolute',left:`${headPos.x}%`,top:`${headPos.y}%`,transform:'translate(-50%,-50%)',
-              cursor:'grab',touchAction:'none',zIndex:selected==='head'?10:5,maxWidth:'88%',textAlign:'center'}}>
-            {selected==='head' && <div style={{position:'absolute',top:-18,left:'50%',transform:'translateX(-50%)',fontSize:9,color:accent,fontWeight:800,whiteSpace:'nowrap',background:'#111',padding:'1px 5px',borderRadius:4,zIndex:20}}>↕↔</div>}
-            <div style={{
-              outline:selected==='head'?`2px solid ${accent}`:`1px dashed rgba(255,255,255,0.15)`,
-              outlineOffset:4,borderRadius:6,padding:'4px 8px',
-              fontFamily:"'Cairo',sans-serif",fontWeight:900,
-              fontSize:`clamp(9px,${3.5*headSize*(isStory?0.7:1)}vw,${isStory?22*headSize:28*headSize}px)`,
-              color:hasBg?'#FFFFFF':t.text,lineHeight:1.35,direction:'rtl',wordBreak:'break-word',
-            }}>{headlineClean}</div>
-          </div>
-
-          {/* BODY */}
-          {slide.body && (
-            <div onPointerDown={e=>startDrag(e,'body')}
-              style={{position:'absolute',left:`${bodyPos.x}%`,top:`${bodyPos.y}%`,transform:'translate(-50%,-50%)',
-                cursor:'grab',touchAction:'none',zIndex:selected==='body'?10:5,maxWidth:'88%',textAlign:'center'}}>
-              {selected==='body' && <div style={{position:'absolute',top:-18,left:'50%',transform:'translateX(-50%)',fontSize:9,color:'#60C8FF',fontWeight:800,whiteSpace:'nowrap',background:'#111',padding:'1px 5px',borderRadius:4,zIndex:20}}>↕↔</div>}
+            {/* HEADLINE handle */}
+            <div onPointerDown={e=>startDrag(e,'head')}
+              style={{position:'absolute',
+                left:`${headPos.x}%`, top:`${headPos.y}%`,
+                transform:'translate(-50%,-50%)',
+                cursor:'grab', touchAction:'none', zIndex:selected==='head'?10:6,
+                maxWidth:'88%', textAlign:'center',
+              }}>
               <div style={{
-                outline:selected==='body'?'2px solid #60C8FF':'1px dashed rgba(255,255,255,0.1)',
-                outlineOffset:4,borderRadius:6,padding:'3px 6px',
-                fontFamily:"'Cairo',sans-serif",fontWeight:500,
-                fontSize:`clamp(7px,${2.2*bodySize*(isStory?0.7:1)}vw,${isStory?14*bodySize:17*bodySize}px)`,
-                color:hasBg?'rgba(255,255,255,0.85)':t.sub,lineHeight:1.6,direction:'rtl',wordBreak:'break-word',
-              }}>{slide.body}</div>
+                border:selected==='head'?`2px solid ${accent}`:`1.5px dashed ${accent}66`,
+                borderRadius:6, padding:'3px 6px',
+                background:selected==='head'?`${accent}22`:'transparent',
+                transition:'background 0.15s, border-color 0.15s',
+              }}>
+                {selected==='head' && <div style={{position:'absolute',top:-18,left:'50%',transform:'translateX(-50%)',fontSize:9,color:accent,fontWeight:800,whiteSpace:'nowrap',background:'#111',padding:'1px 5px',borderRadius:3,zIndex:20}}>↕ ↔ اسحب</div>}
+                <div style={{
+                  fontFamily:"'Cairo',sans-serif", fontWeight:900,
+                  fontSize:`${Math.max(10, canvasW * 0.065 * headSize)}px`,
+                  color:'transparent', lineHeight:1.35, direction:'rtl',
+                  wordBreak:'break-word', whiteSpace:'pre-wrap',
+                  // Invisible text — just for hit area sizing
+                  WebkitTextStroke:`1px ${accent}44`,
+                }}>{headlineClean}</div>
+              </div>
             </div>
-          )}
 
-          {/* Handle */}
-          <div style={{position:'absolute',bottom:'4%',right:'5%',fontSize:'clamp(5px,1.2vw,9px)',color:hasBg?'rgba(255,255,255,0.25)':t.brand,fontFamily:"'Cairo',sans-serif",fontWeight:700,pointerEvents:'none'}}>{slide.handle||'@5gates.bh'}</div>
-          <div style={{position:'absolute',bottom:'3%',right:'5%',width:'7%',height:2,background:accent,borderRadius:1,pointerEvents:'none'}}/>
+            {/* BODY handle */}
+            {slide.body && (
+              <div onPointerDown={e=>startDrag(e,'body')}
+                style={{position:'absolute',
+                  left:`${bodyPos.x}%`, top:`${bodyPos.y}%`,
+                  transform:'translate(-50%,-50%)',
+                  cursor:'grab', touchAction:'none', zIndex:selected==='body'?10:6,
+                  maxWidth:'88%', textAlign:'center',
+                }}>
+                <div style={{
+                  border:selected==='body'?'2px solid #60C8FF':'1.5px dashed rgba(96,200,255,0.4)',
+                  borderRadius:6, padding:'3px 6px',
+                  background:selected==='body'?'rgba(96,200,255,0.1)':'transparent',
+                  transition:'background 0.15s, border-color 0.15s',
+                }}>
+                  {selected==='body' && <div style={{position:'absolute',top:-18,left:'50%',transform:'translateX(-50%)',fontSize:9,color:'#60C8FF',fontWeight:800,whiteSpace:'nowrap',background:'#111',padding:'1px 5px',borderRadius:3,zIndex:20}}>↕ ↔ اسحب</div>}
+                  <div style={{
+                    fontFamily:"'Cairo',sans-serif", fontWeight:500,
+                    fontSize:`${Math.max(7, canvasW * 0.04 * bodySize)}px`,
+                    color:'transparent', lineHeight:1.6, direction:'rtl',
+                    wordBreak:'break-word', whiteSpace:'pre-wrap',
+                    WebkitTextStroke:'1px rgba(96,200,255,0.4)',
+                  }}>{slide.body}</div>
+                </div>
+              </div>
+            )}
+          </>}
         </div>
       </div>
     </div>
@@ -916,7 +966,6 @@ function InlineEditor({ slide, theme, fs, onUpdate }: {
 }
 
 
-// ═══════════════════════════════════════════════════
 // BIZ4SALE REEL GENERATOR
 // Fill form → renders branded business-for-sale card
 // ═══════════════════════════════════════════════════
@@ -1693,7 +1742,7 @@ Then: what you changed (1 line, in the same language the user wrote in).`
                       ))}
                     </div>
                     {/* Main inline editor */}
-                    {sl && <InlineEditor slide={sl} theme={theme} fs={fs} onUpdate={upd}/>}
+                    {sl && <InlineEditor slide={sl} theme={theme} fs={fs} total={slides.length} onUpdate={upd}/>}
                   </div>
                 )}
               </div>
