@@ -767,20 +767,19 @@ function InlineEditor({ slide, theme, fs, onUpdate }: {
   const hasBg = !!(slide.uploadedBg || slide.bgImage)
   const containerRef = useRef<HTMLDivElement>(null)
   const [selected, setSelected] = useState<'head'|'body'|null>(null)
-  const [headPos, setHeadPos] = useState({ x: slide.headX ?? 50, y: slide.headY ?? (isStory?40:38) })
-  const [bodyPos, setBodyPos] = useState({ x: slide.bodyX ?? 50, y: slide.bodyY ?? (isStory?55:58) })
-  const [headSize, setHeadSize] = useState(slide.headSize ?? 1.0)
-  const [bodySize, setBodySize] = useState(slide.bodySize ?? 1.0)
+  const [headPos, setHeadPos] = useState({ x: slide.headX??50, y: slide.headY??(isStory?40:38) })
+  const [bodyPos, setBodyPos] = useState({ x: slide.bodyX??50, y: slide.bodyY??(isStory?55:58) })
+  const [headSize, setHeadSize] = useState(slide.headSize??1.0)
+  const [bodySize, setBodySize] = useState(slide.bodySize??1.0)
   const dragging = useRef<{which:'head'|'body';mx:number;my:number;ox:number;oy:number}|null>(null)
 
-  // Sync from slide when active changes
   useEffect(()=>{
-    setHeadPos({ x: slide.headX??50, y: slide.headY??(isStory?40:38) })
-    setBodyPos({ x: slide.bodyX??50, y: slide.bodyY??(isStory?55:58) })
+    setHeadPos({ x:slide.headX??50, y:slide.headY??(isStory?40:38) })
+    setBodyPos({ x:slide.bodyX??50, y:slide.bodyY??(isStory?55:58) })
     setHeadSize(slide.headSize??1.0)
     setBodySize(slide.bodySize??1.0)
     setSelected(null)
-  },[slide.headline, slide.body])
+  },[slide.headline,slide.body])
 
   function getRect(){ return containerRef.current?.getBoundingClientRect()??{width:1,height:1} }
 
@@ -795,10 +794,10 @@ function InlineEditor({ slide, theme, fs, onUpdate }: {
   function onMove(e:React.PointerEvent){
     if(!dragging.current) return
     const r = getRect()
-    const dx = (e.clientX - dragging.current.mx)/r.width*100
-    const dy = (e.clientY - dragging.current.my)/r.height*100
-    const nx = Math.max(5, Math.min(95, dragging.current.ox+dx))
-    const ny = Math.max(5, Math.min(95, dragging.current.oy+dy))
+    const dx = (e.clientX-dragging.current.mx)/r.width*100
+    const dy = (e.clientY-dragging.current.my)/r.height*100
+    const nx = Math.max(5,Math.min(95,dragging.current.ox+dx))
+    const ny = Math.max(5,Math.min(95,dragging.current.oy+dy))
     if(dragging.current.which==='head') setHeadPos({x:nx,y:ny})
     else setBodyPos({x:nx,y:ny})
   }
@@ -812,132 +811,110 @@ function InlineEditor({ slide, theme, fs, onUpdate }: {
 
   const accent = (theme==='bizbay'||theme==='bizbay_light') ? '#00BCD4' : '#CC3333'
   const headlineClean = slide.headline.replace(/\*+/g,'')
-  const aspectRatio = isStory ? '9/16' : '1080/1350'
+  // Slide aspect: carousel=1080/1350=0.8, story=9/16=0.5625
+  const slideAR = isStory ? 9/16 : 1080/1350
 
   return (
-    <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'12px',gap:10,overflow:'hidden'}}>
-      {/* Toolbar — shows when element selected */}
-      <div style={{height:44,display:'flex',alignItems:'center',gap:8,flexShrink:0,width:'100%',maxWidth:500,justifyContent:'center'}}>
+    <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',overflow:'hidden',background:'#0D0D0D',padding:'8px 8px 0'}}>
+      {/* Toolbar */}
+      <div style={{height:40,display:'flex',alignItems:'center',gap:8,flexShrink:0,marginBottom:6,justifyContent:'center'}}>
         {selected ? (
           <>
-            <div style={{fontSize:11,color:'#555',fontWeight:700}}>{selected==='head'?'العنوان':'النص'}</div>
-            <div style={{display:'flex',alignItems:'center',gap:6,background:'#1E1E1E',borderRadius:10,padding:'4px 10px',border:'1px solid rgba(255,255,255,0.08)'}}>
-              <button onClick={()=>{
-                const ns = Math.max(0.5, (selected==='head'?headSize:bodySize)-0.1)
-                if(selected==='head'){setHeadSize(ns);onUpdate({headSize:ns})}
-                else{setBodySize(ns);onUpdate({bodySize:ns})}
-              }} style={{background:'none',border:'none',color:'#888',fontSize:18,cursor:'pointer',padding:'0 4px',lineHeight:1}}>−</button>
-              <span style={{fontSize:12,color:'#F0EDE8',fontWeight:800,minWidth:32,textAlign:'center'}}>
-                {Math.round((selected==='head'?headSize:bodySize)*100)}%
-              </span>
-              <button onClick={()=>{
-                const ns = Math.min(2.0, (selected==='head'?headSize:bodySize)+0.1)
-                if(selected==='head'){setHeadSize(ns);onUpdate({headSize:ns})}
-                else{setBodySize(ns);onUpdate({bodySize:ns})}
-              }} style={{background:'none',border:'none',color:'#888',fontSize:18,cursor:'pointer',padding:'0 4px',lineHeight:1}}>+</button>
+            <span style={{fontSize:11,color:selected==='head'?accent:'#60C8FF',fontWeight:800}}>{selected==='head'?'العنوان':'النص'}</span>
+            <div style={{display:'flex',alignItems:'center',gap:4,background:'#1E1E1E',borderRadius:8,padding:'3px 8px',border:'1px solid rgba(255,255,255,0.1)'}}>
+              <button onClick={()=>{const ns=Math.max(0.5,(selected==='head'?headSize:bodySize)-0.1);if(selected==='head'){setHeadSize(ns);onUpdate({headSize:ns})}else{setBodySize(ns);onUpdate({bodySize:ns})}}}
+                style={{background:'none',border:'none',color:'#aaa',fontSize:20,cursor:'pointer',padding:'0 2px',lineHeight:1,fontWeight:300}}>−</button>
+              <span style={{fontSize:12,color:'#F0EDE8',fontWeight:800,minWidth:36,textAlign:'center'}}>{Math.round((selected==='head'?headSize:bodySize)*100)}%</span>
+              <button onClick={()=>{const ns=Math.min(2.0,(selected==='head'?headSize:bodySize)+0.1);if(selected==='head'){setHeadSize(ns);onUpdate({headSize:ns})}else{setBodySize(ns);onUpdate({bodySize:ns})}}}
+                style={{background:'none',border:'none',color:'#aaa',fontSize:20,cursor:'pointer',padding:'0 2px',lineHeight:1,fontWeight:300}}>+</button>
             </div>
-            <button onClick={()=>{
-              if(selected==='head'){setHeadSize(1.0);onUpdate({headSize:1.0})}
-              else{setBodySize(1.0);onUpdate({bodySize:1.0})}
-            }} style={{...btnD,padding:'5px 8px',fontSize:10}}>↺</button>
-            <button onClick={()=>setSelected(null)} style={{...btnD,padding:'5px 8px',fontSize:10}}>✕</button>
+            <button onClick={()=>{if(selected==='head'){setHeadSize(1.0);onUpdate({headSize:1.0})}else{setBodySize(1.0);onUpdate({bodySize:1.0})}}} style={{background:'#222',border:'none',borderRadius:6,color:'#555',fontSize:11,cursor:'pointer',padding:'4px 8px'}}>↺</button>
+            <button onClick={()=>setSelected(null)} style={{background:'#222',border:'none',borderRadius:6,color:'#555',fontSize:11,cursor:'pointer',padding:'4px 8px'}}>✕</button>
           </>
         ) : (
-          <div style={{fontSize:11,color:'#333',textAlign:'center'}}>اضغط على العنوان أو النص في الشريحة للتحريك والتكبير</div>
+          <span style={{fontSize:10,color:'#333'}}>اضغط على النص في الشريحة للتحريك والتكبير</span>
         )}
       </div>
 
-      {/* Slide canvas */}
-      <div ref={containerRef}
-        onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onUp}
-        onClick={e=>{ if(e.target===containerRef.current) setSelected(null) }}
-        style={{
-          position:'relative', aspectRatio, maxHeight:'calc(100% - 60px)',
-          width:`min(100%, calc((100% - 60px) * ${isStory?'0.5625':'0.8'}))`,
-          borderRadius:14, overflow:'hidden',
-          background: hasBg?'transparent':t.bg,
-          userSelect:'none', touchAction:'none', cursor:'default',
-          boxShadow:'0 8px 40px rgba(0,0,0,0.6)',
-          flexShrink:0,
-        }}>
-
-        {/* Background */}
-        {hasBg && <>
-          <img src={slide.uploadedBg||slide.bgImage} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}} crossOrigin="anonymous"/>
-          <div style={{position:'absolute',inset:0,background:`rgba(0,0,0,${slide.overlayOpacity??0.72})`}}/>
-        </>}
-
-        {/* Gradient accent */}
-        <div style={{position:'absolute',inset:0,background:`radial-gradient(circle at 110% -10%, ${accent}44, transparent 60%)`,pointerEvents:'none'}}/>
-
-        {/* Brand label */}
-        <div style={{position:'absolute',top:'3%',left:'50%',transform:'translateX(-50%)',fontSize:'clamp(7px,1.8vw,14px)',fontWeight:900,color:hasBg?'rgba(255,255,255,0.45)':t.brand,letterSpacing:2,pointerEvents:'none',fontFamily:"'Tajawal',sans-serif"}}>
-          {BRAND_META[theme]?.name||'5GATES'}
-        </div>
-
-        {/* Icon */}
-        <div style={{position:'absolute',top:'4%',right:'4%',fontSize:'clamp(14px,4vw,36px)',pointerEvents:'none'}}>
-          {getIcon(slide.headline,slide.icon)}
-        </div>
-
-        {/* Guide lines when dragging */}
-        {dragging.current && <div style={{position:'absolute',inset:0,pointerEvents:'none'}}>
-          <div style={{position:'absolute',left:'50%',top:0,bottom:0,width:1,background:'rgba(255,255,255,0.15)'}}/>
-          <div style={{position:'absolute',top:'33%',left:0,right:0,height:1,background:'rgba(255,255,255,0.15)'}}/>
-          <div style={{position:'absolute',top:'66%',left:0,right:0,height:1,background:'rgba(255,255,255,0.15)'}}/>
-        </div>}
-
-        {/* HEADLINE draggable */}
-        <div onPointerDown={e=>startDrag(e,'head')}
-          style={{position:'absolute',left:`${headPos.x}%`,top:`${headPos.y}%`,transform:'translate(-50%,-50%)',
-            cursor:'grab',touchAction:'none',zIndex:selected==='head'?10:5,maxWidth:'85%',textAlign:'center'}}>
-          <div style={{
-            padding:'6px 10px',
-            outline: selected==='head' ? `2px solid ${accent}` : '2px solid transparent',
-            outlineOffset:4, borderRadius:8,
-            transition:'outline-color 0.15s',
+      {/* Slide — sized to fit available space keeping aspect ratio */}
+      <div style={{flex:1,width:'100%',display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',paddingBottom:8}}>
+        <div ref={containerRef}
+          onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onUp}
+          onClick={e=>{ if(e.target===containerRef.current) setSelected(null) }}
+          style={{
+            position:'relative',
+            // Height drives sizing — max out the available height, width follows AR
+            height:'100%',
+            maxWidth:`calc(100% * ${slideAR})`,
+            aspectRatio:`${slideAR}`,
+            borderRadius:12,
+            overflow:'hidden',
+            background:hasBg?'transparent':t.bg,
+            userSelect:'none', touchAction:'none',
+            boxShadow:'0 4px 32px rgba(0,0,0,0.7)',
+            flexShrink:0,
           }}>
-            {selected==='head' && <div style={{position:'absolute',top:-22,left:'50%',transform:'translateX(-50%)',fontSize:9,color:accent,fontWeight:800,whiteSpace:'nowrap',background:'#1A1A1A',padding:'2px 6px',borderRadius:4}}>↕↔ اسحب</div>}
+
+          {hasBg && <>
+            <img src={slide.uploadedBg||slide.bgImage} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover'}} crossOrigin="anonymous"/>
+            <div style={{position:'absolute',inset:0,background:`rgba(0,0,0,${slide.overlayOpacity??0.72})`}}/>
+          </>}
+          <div style={{position:'absolute',inset:0,background:`radial-gradient(circle at 110% -10%, ${accent}33, transparent 60%)`,pointerEvents:'none'}}/>
+
+          {/* Brand */}
+          <div style={{position:'absolute',top:'3%',left:'50%',transform:'translateX(-50%)',fontSize:'clamp(6px,1.5vw,12px)',fontWeight:900,color:hasBg?'rgba(255,255,255,0.4)':t.brand,letterSpacing:2,pointerEvents:'none',fontFamily:"'Tajawal',sans-serif",whiteSpace:'nowrap'}}>
+            {BRAND_META[theme]?.name||'5GATES'}
+          </div>
+          <div style={{position:'absolute',top:'4%',right:'4%',fontSize:'clamp(12px,3vw,28px)',pointerEvents:'none'}}>
+            {getIcon(slide.headline,slide.icon)}
+          </div>
+
+          {/* Guide lines while dragging */}
+          {dragging.current && <div style={{position:'absolute',inset:0,pointerEvents:'none'}}>
+            <div style={{position:'absolute',left:'50%',top:0,bottom:0,width:1,background:'rgba(255,255,255,0.2)'}}/>
+            <div style={{position:'absolute',top:'33%',left:0,right:0,height:1,background:'rgba(255,255,255,0.2)'}}/>
+            <div style={{position:'absolute',top:'66%',left:0,right:0,height:1,background:'rgba(255,255,255,0.2)'}}/>
+          </div>}
+
+          {/* HEADLINE */}
+          <div onPointerDown={e=>startDrag(e,'head')}
+            style={{position:'absolute',left:`${headPos.x}%`,top:`${headPos.y}%`,transform:'translate(-50%,-50%)',
+              cursor:'grab',touchAction:'none',zIndex:selected==='head'?10:5,maxWidth:'88%',textAlign:'center'}}>
+            {selected==='head' && <div style={{position:'absolute',top:-18,left:'50%',transform:'translateX(-50%)',fontSize:9,color:accent,fontWeight:800,whiteSpace:'nowrap',background:'#111',padding:'1px 5px',borderRadius:4,zIndex:20}}>↕↔</div>}
             <div style={{
-              fontFamily:"'Cairo',sans-serif", fontWeight:900,
-              fontSize:`clamp(11px,${3.5*headSize}vw,${28*headSize}px)`,
-              color: hasBg?'#FFFFFF':t.text, lineHeight:1.35,
-              direction:'rtl', wordBreak:'break-word',
+              outline:selected==='head'?`2px solid ${accent}`:`1px dashed rgba(255,255,255,0.15)`,
+              outlineOffset:4,borderRadius:6,padding:'4px 8px',
+              fontFamily:"'Cairo',sans-serif",fontWeight:900,
+              fontSize:`clamp(9px,${3.5*headSize*(isStory?0.7:1)}vw,${isStory?22*headSize:28*headSize}px)`,
+              color:hasBg?'#FFFFFF':t.text,lineHeight:1.35,direction:'rtl',wordBreak:'break-word',
             }}>{headlineClean}</div>
           </div>
-        </div>
 
-        {/* BODY draggable */}
-        {slide.body && (
-          <div onPointerDown={e=>startDrag(e,'body')}
-            style={{position:'absolute',left:`${bodyPos.x}%`,top:`${bodyPos.y}%`,transform:'translate(-50%,-50%)',
-              cursor:'grab',touchAction:'none',zIndex:selected==='body'?10:5,maxWidth:'85%',textAlign:'center'}}>
-            <div style={{
-              padding:'4px 8px',
-              outline: selected==='body' ? `2px solid #60C8FF` : '2px solid transparent',
-              outlineOffset:4, borderRadius:8,
-              transition:'outline-color 0.15s',
-            }}>
-              {selected==='body' && <div style={{position:'absolute',top:-22,left:'50%',transform:'translateX(-50%)',fontSize:9,color:'#60C8FF',fontWeight:800,whiteSpace:'nowrap',background:'#1A1A1A',padding:'2px 6px',borderRadius:4}}>↕↔ اسحب</div>}
+          {/* BODY */}
+          {slide.body && (
+            <div onPointerDown={e=>startDrag(e,'body')}
+              style={{position:'absolute',left:`${bodyPos.x}%`,top:`${bodyPos.y}%`,transform:'translate(-50%,-50%)',
+                cursor:'grab',touchAction:'none',zIndex:selected==='body'?10:5,maxWidth:'88%',textAlign:'center'}}>
+              {selected==='body' && <div style={{position:'absolute',top:-18,left:'50%',transform:'translateX(-50%)',fontSize:9,color:'#60C8FF',fontWeight:800,whiteSpace:'nowrap',background:'#111',padding:'1px 5px',borderRadius:4,zIndex:20}}>↕↔</div>}
               <div style={{
-                fontFamily:"'Cairo',sans-serif", fontWeight:500,
-                fontSize:`clamp(8px,${2.2*bodySize}vw,${17*bodySize}px)`,
-                color: hasBg?'rgba(255,255,255,0.85)':t.sub, lineHeight:1.7,
-                direction:'rtl', wordBreak:'break-word',
+                outline:selected==='body'?'2px solid #60C8FF':'1px dashed rgba(255,255,255,0.1)',
+                outlineOffset:4,borderRadius:6,padding:'3px 6px',
+                fontFamily:"'Cairo',sans-serif",fontWeight:500,
+                fontSize:`clamp(7px,${2.2*bodySize*(isStory?0.7:1)}vw,${isStory?14*bodySize:17*bodySize}px)`,
+                color:hasBg?'rgba(255,255,255,0.85)':t.sub,lineHeight:1.6,direction:'rtl',wordBreak:'break-word',
               }}>{slide.body}</div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Handle */}
-        <div style={{position:'absolute',bottom:'4%',right:'5%',fontSize:'clamp(6px,1.5vw,11px)',color:hasBg?'rgba(255,255,255,0.3)':t.brand,fontFamily:"'Cairo',sans-serif",fontWeight:700,pointerEvents:'none'}}>
-          {slide.handle||'@5gates.bh'}
+          {/* Handle */}
+          <div style={{position:'absolute',bottom:'4%',right:'5%',fontSize:'clamp(5px,1.2vw,9px)',color:hasBg?'rgba(255,255,255,0.25)':t.brand,fontFamily:"'Cairo',sans-serif",fontWeight:700,pointerEvents:'none'}}>{slide.handle||'@5gates.bh'}</div>
+          <div style={{position:'absolute',bottom:'3%',right:'5%',width:'7%',height:2,background:accent,borderRadius:1,pointerEvents:'none'}}/>
         </div>
-        <div style={{position:'absolute',bottom:'3%',right:'5%',width:'7%',height:2,background:accent,borderRadius:1,pointerEvents:'none'}}/>
       </div>
     </div>
   )
 }
+
 
 // ═══════════════════════════════════════════════════
 // BIZ4SALE REEL GENERATOR
