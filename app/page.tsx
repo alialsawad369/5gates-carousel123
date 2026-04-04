@@ -139,7 +139,7 @@ async function renderSlide(slide:Slide,idx:number,total:number,theme:Theme,fontS
     : (vPos==='top'?CH*0.18:vPos==='bottom'?CH*0.55:CH*0.28)
 
   // Proportional text layout — identical math to drawThumb for WYSIWYG consistency
-  const hs=Math.round(88*fs),lh=hs*1.32,mx=W*0.85,rx=hasAbsPos?(headAbsX+W*0.43):W*0.93+hxOff
+  const hs=Math.round(88*fs*(slide.headSize??1.0)),lh=hs*1.32,mx=W*0.85,rx=hasAbsPos?(headAbsX+W*0.43):W*0.93+hxOff
   ctx.font=`900 ${hs}px 'Cairo',sans-serif`
   ctx.textAlign='right'; ctx.textBaseline='top'
   ctx.fillStyle=bgSrc?'#FFFFFF':t.text
@@ -158,7 +158,7 @@ async function renderSlide(slide:Slide,idx:number,total:number,theme:Theme,fontS
     const hasAbsBody = slide.bodyX !== undefined && slide.bodyY !== undefined
     const bodyAbsX = (slide.bodyX??50)/100*W
     const bodyAbsY = (slide.bodyY??(isStory?55:58))/100*CH
-    const bs=Math.round(42*fs)
+    const bs=Math.round(42*fs*(slide.bodySize??1.0))
     ctx.font=`500 ${bs}px 'Cairo',sans-serif`
     ctx.fillStyle=bgSrc?'rgba(255,255,255,0.85)':t.sub
     ctx.textAlign='right'; ctx.textBaseline='top'
@@ -224,7 +224,7 @@ function drawThumb(slide:Slide,idx:number,total:number,theme:Theme,fs:number,can
     ? (vPos==='top'?H*0.15:vPos==='bottom'?H*0.60:H*0.32)
     : (vPos==='top'?H*0.18:vPos==='bottom'?H*0.55:H*0.28)
   // Native RTL rendering — same approach as renderSlide
-  const hs=Math.round(88*pfs),lh=hs*1.32,mx=W*0.85,rx=hasAbsPos2?(headAbsX2+W*0.43):W*0.93+hxOff
+  const hs=Math.round(88*pfs*(slide.headSize??1.0)),lh=hs*1.32,mx=W*0.85,rx=hasAbsPos2?(headAbsX2+W*0.43):W*0.93+hxOff
   ctx.font=`900 ${hs}px ${F}`
   ctx.textAlign='right'; ctx.textBaseline='top'
   ctx.fillStyle=(slide.bgImage||slide.uploadedBg)?'#FFFFFF':t.text
@@ -243,7 +243,7 @@ function drawThumb(slide:Slide,idx:number,total:number,theme:Theme,fs:number,can
     const hasAbsBody2 = slide.bodyX !== undefined && slide.bodyY !== undefined
     const bodyAbsX2 = (slide.bodyX??50)/100*W
     const bodyAbsY2 = (slide.bodyY??(isStory?55:58))/100*H
-    const bs=Math.round(42*pfs)
+    const bs=Math.round(42*pfs*(slide.bodySize??1.0))
     ctx.font=`500 ${bs}px ${F}`
     ctx.fillStyle=(slide.bgImage||slide.uploadedBg)?'rgba(255,255,255,0.85)':t.sub
     ctx.textAlign='right'; ctx.textBaseline='top'
@@ -780,154 +780,79 @@ const btnD:React.CSSProperties={background:'#2A2A2A',color:'#888',border:'1px so
 // Renders via renderSlide() — exact same function
 // as export. Tap to select text, drag to reposition.
 // ═══════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
+// PREVIEW EDITOR — uses SlideThumb canvas (same as
+// thumbnails and export). Drag = move text via simple
+// position controls overlaid on the canvas preview.
+// ═══════════════════════════════════════════════════
 function InlineEditor({ slide, theme, fs, onUpdate, total }: {
   slide: Slide; theme: Theme; fs: number; total: number;
   onUpdate: (u: Partial<Slide>) => void;
 }) {
   const isStory = slide.mode === 'story'
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const wrapRef = useRef<HTMLDivElement>(null)
+  const imgRef = useRef<HTMLImageElement|null>(null)
+  const [dragging, setDragging] = useState<'head'|'body'|null>(null)
   const [selected, setSelected] = useState<'head'|'body'|null>(null)
   const [headPos, setHeadPos] = useState({ x: slide.headX??50, y: slide.headY??(isStory?40:38) })
   const [bodyPos, setBodyPos] = useState({ x: slide.bodyX??50, y: slide.bodyY??(isStory?55:58) })
   const [headSize, setHeadSize] = useState(slide.headSize??1.0)
   const [bodySize, setBodySize] = useState(slide.bodySize??1.0)
-  const dragging = useRef<{which:'head'|'body';startX:number;startY:number;startPosX:number;startPosY:number}|null>(null)
-  const renderRef = useRef<{headPos:{x:number,y:number};bodyPos:{x:number,y:number};selected:'head'|'body'|null}>({headPos:{x:50,y:38},bodyPos:{x:50,y:58},selected:null})
-  const rafRef = useRef<number>(0)
+  const dragStart = useRef<{mx:number;my:number;ox:number;oy:number}|null>(null)
   const accent = (theme==='bizbay'||theme==='bizbay_light') ? '#00BCD4' : '#CC3333'
 
-  // Sync from props when slide changes
   useEffect(()=>{
-    const hp = { x:slide.headX??50, y:slide.headY??(isStory?40:38) }
-    const bp = { x:slide.bodyX??50, y:slide.bodyY??(isStory?55:58) }
-    setHeadPos(hp); setBodyPos(bp)
-    setHeadSize(slide.headSize??1.0); setBodySize(slide.bodySize??1.0)
+    setHeadPos({ x:slide.headX??50, y:slide.headY??(isStory?40:38) })
+    setBodyPos({ x:slide.bodyX??50, y:slide.bodyY??(isStory?55:58) })
+    setHeadSize(slide.headSize??1.0)
+    setBodySize(slide.bodySize??1.0)
     setSelected(null)
-    renderRef.current = { headPos:hp, bodyPos:bp, selected:null }
   },[slide.headline, slide.body, slide.mode])
 
-  // Draw — uses renderSlide (EXACT same as export)
-  const draw = useCallback(async()=>{
-    const canvas = canvasRef.current; if(!canvas) return
-    const W = canvas.width
-    const H = isStory ? Math.round(W*16/9) : Math.round(W*1350/1080)
-    if(canvas.height !== H) canvas.height = H
+  // Draw using drawThumb — same as export
+  useEffect(()=>{
+    if(!canvasRef.current) return
+    const s: Slide = { ...slide, headX:Math.round(headPos.x), headY:Math.round(headPos.y), bodyX:Math.round(bodyPos.x), bodyY:Math.round(bodyPos.y) }
+    const draw = () => { if(canvasRef.current) drawThumb(s, 0, total, theme, fs, canvasRef.current, imgRef.current) }
+    const bgSrc = slide.uploadedBg || slide.bgImage
+    if(bgSrc && (!imgRef.current || imgRef.current.src !== bgSrc)){
+      const img = new Image(); img.crossOrigin='anonymous'
+      img.onload=()=>{ imgRef.current=img; draw() }
+      img.onerror=()=>{ imgRef.current=null; draw() }
+      img.src = bgSrc
+    } else draw()
+  })
 
-    // Build slide with current drag positions
-    const s: Slide = {
-      ...slide,
-      headX: renderRef.current.headPos.x,
-      headY: renderRef.current.headPos.y,
-      bodyX: renderRef.current.bodyPos.x,
-      bodyY: renderRef.current.bodyPos.y,
-    }
+  function getRect(){ return canvasRef.current?.getBoundingClientRect()??{width:1,height:1,left:0,top:0} }
 
-    // Render using the exact export function
-    const dataUrl = await renderSlide(s, 0, total, theme, fs, W, H)
-
-    // Draw result onto canvas
-    const img = new Image()
-    img.onload = () => {
-      const ctx = canvas.getContext('2d')!
-      ctx.drawImage(img, 0, 0, W, H)
-
-      // Draw selection indicator on top
-      const sel = renderRef.current.selected
-      if(sel) {
-        const pos = sel==='head' ? renderRef.current.headPos : renderRef.current.bodyPos
-        const px = pos.x/100*W
-        const py = pos.y/100*H
-        const col = sel==='head' ? accent : '#60C8FF'
-        ctx.strokeStyle = col
-        ctx.lineWidth = 2
-        ctx.setLineDash([6,3])
-        ctx.strokeRect(px - W*0.35, py - H*0.06, W*0.7, H*0.12)
-        ctx.setLineDash([])
-        // Label
-        ctx.fillStyle = col
-        ctx.font = `bold ${Math.round(W*0.025)}px Arial`
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'bottom'
-        ctx.fillText(sel==='head'?'العنوان — اسحب':'النص — اسحب', px, py - H*0.065)
-      }
-    }
-    img.src = dataUrl
-  }, [slide, theme, fs, total, isStory, accent])
-
-  useEffect(()=>{ draw() },[draw])
-
-  // Hit test — which text block was tapped?
-  function hitTest(px: number, py: number, canvasW: number, canvasH: number): 'head'|'body'|null {
-    const hp = renderRef.current.headPos
-    const bp = renderRef.current.bodyPos
-    const hx = hp.x/100*canvasW, hy = hp.y/100*canvasH
-    const bx = bp.x/100*canvasW, by = bp.y/100*canvasH
-    const hitR = canvasW*0.35, hitH = canvasH*0.1
-    if(Math.abs(px-hx) < hitR && Math.abs(py-hy) < hitH) return 'head'
-    if(slide.body && Math.abs(px-bx) < hitR && Math.abs(py-by) < hitH) return 'body'
-    return null
+  function startDrag(e: React.PointerEvent, which: 'head'|'body'){
+    e.preventDefault(); e.stopPropagation()
+    setDragging(which); setSelected(which)
+    const pos = which==='head' ? headPos : bodyPos
+    dragStart.current = { mx:e.clientX, my:e.clientY, ox:pos.x, oy:pos.y }
+    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
   }
 
-  function getCanvasXY(e: React.PointerEvent): {x:number,y:number,w:number,h:number} {
-    const canvas = canvasRef.current!
-    const rect = canvas.getBoundingClientRect()
-    const scaleX = canvas.width / rect.width
-    const scaleY = canvas.height / rect.height
-    return {
-      x: (e.clientX - rect.left) * scaleX,
-      y: (e.clientY - rect.top) * scaleY,
-      w: canvas.width,
-      h: canvas.height,
-    }
+  function onMove(e: React.PointerEvent){
+    if(!dragging || !dragStart.current) return
+    const r = getRect()
+    const dx = (e.clientX - dragStart.current.mx) / r.width * 100
+    const dy = (e.clientY - dragStart.current.my) / r.height * 100
+    const nx = Math.max(5, Math.min(95, dragStart.current.ox + dx))
+    const ny = Math.max(5, Math.min(95, dragStart.current.oy + dy))
+    if(dragging==='head') setHeadPos({x:nx,y:ny})
+    else setBodyPos({x:nx,y:ny})
   }
 
-  function onPointerDown(e: React.PointerEvent) {
-    e.preventDefault()
-    const {x,y,w,h} = getCanvasXY(e)
-    const hit = hitTest(x, y, w, h)
-    const pos = hit==='head' ? renderRef.current.headPos : renderRef.current.bodyPos
-    if(hit) {
-      setSelected(hit)
-      renderRef.current.selected = hit
-      dragging.current = { which:hit, startX:e.clientX, startY:e.clientY, startPosX:pos.x, startPosY:pos.y }
-      ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
-    } else {
-      setSelected(null)
-      renderRef.current.selected = null
-      draw()
-    }
+  function onUp(){
+    if(!dragging) return
+    if(dragging==='head') onUpdate({headX:Math.round(headPos.x), headY:Math.round(headPos.y)})
+    else onUpdate({bodyX:Math.round(bodyPos.x), bodyY:Math.round(bodyPos.y)})
+    setDragging(null); dragStart.current = null
   }
 
-  function onPointerMove(e: React.PointerEvent) {
-    if(!dragging.current || !canvasRef.current) return
-    const canvas = canvasRef.current
-    const rect = canvas.getBoundingClientRect()
-    const dx = (e.clientX - dragging.current.startX) / rect.width * 100
-    const dy = (e.clientY - dragging.current.startY) / rect.height * 100
-    const nx = Math.max(10, Math.min(90, dragging.current.startPosX + dx))
-    const ny = Math.max(10, Math.min(90, dragging.current.startPosY + dy))
-    if(dragging.current.which==='head') {
-      renderRef.current.headPos = {x:nx, y:ny}
-      setHeadPos({x:nx,y:ny})
-    } else {
-      renderRef.current.bodyPos = {x:nx, y:ny}
-      setBodyPos({x:nx,y:ny})
-    }
-    // Redraw on next frame
-    cancelAnimationFrame(rafRef.current)
-    rafRef.current = requestAnimationFrame(()=>draw())
-  }
-
-  function onPointerUp() {
-    if(!dragging.current) return
-    if(dragging.current.which==='head') {
-      onUpdate({headX:Math.round(renderRef.current.headPos.x), headY:Math.round(renderRef.current.headPos.y)})
-    } else {
-      onUpdate({bodyX:Math.round(renderRef.current.bodyPos.x), bodyY:Math.round(renderRef.current.bodyPos.y)})
-    }
-    dragging.current = null
-  }
+  const cW = isStory ? 405 : 540
+  const cH = isStory ? Math.round(405*16/9) : Math.round(540*1350/1080)
 
   return (
     <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:'#0A0A0A'}}>
@@ -936,48 +861,61 @@ function InlineEditor({ slide, theme, fs, onUpdate, total }: {
         {selected ? (
           <>
             <span style={{fontSize:11,color:selected==='head'?accent:'#60C8FF',fontWeight:800}}>{selected==='head'?'العنوان':'النص'}</span>
-            <button onClick={()=>{const ns=Math.max(0.4,(selected==='head'?headSize:bodySize)-0.1); if(selected==='head'){setHeadSize(ns);onUpdate({headSize:ns})} else{setBodySize(ns);onUpdate({bodySize:ns})}}}
-              style={{width:32,height:32,background:'#222',border:'1px solid #333',borderRadius:8,color:'#ccc',fontSize:22,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>−</button>
+            <button onClick={()=>{const ns=Math.max(0.4,(selected==='head'?headSize:bodySize)-0.1);if(selected==='head'){setHeadSize(ns);onUpdate({headSize:ns})}else{setBodySize(ns);onUpdate({bodySize:ns})}}} style={{width:32,height:32,background:'#222',border:'1px solid #333',borderRadius:8,color:'#ccc',fontSize:22,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>−</button>
             <span style={{fontSize:13,color:'#F0EDE8',fontWeight:800,minWidth:42,textAlign:'center'}}>{Math.round((selected==='head'?headSize:bodySize)*100)}%</span>
-            <button onClick={()=>{const ns=Math.min(2.5,(selected==='head'?headSize:bodySize)+0.1); if(selected==='head'){setHeadSize(ns);onUpdate({headSize:ns})} else{setBodySize(ns);onUpdate({bodySize:ns})}}}
-              style={{width:32,height:32,background:'#222',border:'1px solid #333',borderRadius:8,color:'#ccc',fontSize:22,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>+</button>
-            <button onClick={()=>{if(selected==='head'){setHeadSize(1.0);onUpdate({headSize:1.0})}else{setBodySize(1.0);onUpdate({bodySize:1.0})}}}
-              style={{padding:'6px 10px',background:'#222',border:'1px solid #333',borderRadius:8,color:'#555',fontSize:11,cursor:'pointer'}}>↺</button>
-            <button onClick={()=>{setSelected(null);renderRef.current.selected=null;draw()}}
-              style={{padding:'6px 10px',background:'#222',border:'1px solid #333',borderRadius:8,color:'#555',fontSize:11,cursor:'pointer'}}>✕</button>
+            <button onClick={()=>{const ns=Math.min(2.5,(selected==='head'?headSize:bodySize)+0.1);if(selected==='head'){setHeadSize(ns);onUpdate({headSize:ns})}else{setBodySize(ns);onUpdate({bodySize:ns})}}} style={{width:32,height:32,background:'#222',border:'1px solid #333',borderRadius:8,color:'#ccc',fontSize:22,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>+</button>
+            <button onClick={()=>{if(selected==='head'){setHeadSize(1.0);onUpdate({headSize:1.0})}else{setBodySize(1.0);onUpdate({bodySize:1.0})}}} style={{padding:'6px 10px',background:'#222',border:'1px solid #333',borderRadius:8,color:'#555',fontSize:11,cursor:'pointer'}}>↺</button>
+            <button onClick={()=>setSelected(null)} style={{padding:'6px 10px',background:'#222',border:'1px solid #333',borderRadius:8,color:'#555',fontSize:11,cursor:'pointer'}}>✕</button>
           </>
         ) : (
-          <span style={{fontSize:10,color:'#333'}}>اضغط على النص في الشريحة للتحريك · اضغط وتحريك للسحب</span>
+          <span style={{fontSize:10,color:'#333'}}>اضغط على العنوان أو النص واسحبه</span>
         )}
       </div>
 
-      {/* Canvas — fills available space, correct aspect ratio */}
-      <div ref={wrapRef} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',padding:12}}>
-        <canvas
-          ref={canvasRef}
-          width={isStory?405:540}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerLeave={onPointerUp}
-          style={{
-            height:'100%',
-            maxWidth:'100%',
-            width:'auto',
-            borderRadius:12,
-            boxShadow:'0 6px 40px rgba(0,0,0,0.8)',
-            cursor:'crosshair',
-            touchAction:'none',
-            display:'block',
-          }}
-        />
+      {/* Canvas area */}
+      <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',padding:12,position:'relative'}}
+        onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onUp}>
+
+        <div style={{position:'relative',height:'100%',aspectRatio:`${cW}/${cH}`,maxWidth:'100%'}}>
+          {/* The actual canvas — uses drawThumb, identical to thumbnails */}
+          <canvas ref={canvasRef} width={cW} height={cH}
+            style={{width:'100%',height:'100%',borderRadius:12,boxShadow:'0 6px 40px rgba(0,0,0,0.8)',display:'block'}}/>
+
+          {/* Drag handles — positioned at same % as text */}
+          {/* Headline handle */}
+          <div onPointerDown={e=>startDrag(e,'head')}
+            style={{position:'absolute',left:`${headPos.x}%`,top:`${headPos.y}%`,
+              transform:'translate(-50%,-50%)', cursor:dragging==='head'?'grabbing':'grab',
+              touchAction:'none', zIndex:10, padding:'6px 10px',
+              border:`2px ${selected==='head'?'solid':'dashed'} ${accent}`,
+              borderRadius:8, background:selected==='head'?`${accent}22`:'transparent',
+              transition:'background 0.1s',
+            }}>
+            {selected==='head' && <div style={{position:'absolute',top:-18,left:'50%',transform:'translateX(-50%)',fontSize:9,color:accent,fontWeight:800,whiteSpace:'nowrap',background:'#111',padding:'1px 5px',borderRadius:3}}>↕↔ اسحب</div>}
+            <div style={{width:'clamp(60px,30vw,200px)',height:'clamp(20px,8vw,60px)'}}/>
+          </div>
+
+          {/* Body handle */}
+          {slide.body && (
+            <div onPointerDown={e=>startDrag(e,'body')}
+              style={{position:'absolute',left:`${bodyPos.x}%`,top:`${bodyPos.y}%`,
+                transform:'translate(-50%,-50%)', cursor:dragging==='body'?'grabbing':'grab',
+                touchAction:'none', zIndex:10, padding:'4px 8px',
+                border:`2px ${selected==='body'?'solid':'dashed'} #60C8FF`,
+                borderRadius:8, background:selected==='body'?'rgba(96,200,255,0.1)':'transparent',
+                transition:'background 0.1s',
+              }}>
+              {selected==='body' && <div style={{position:'absolute',top:-18,left:'50%',transform:'translateX(-50%)',fontSize:9,color:'#60C8FF',fontWeight:800,whiteSpace:'nowrap',background:'#111',padding:'1px 5px',borderRadius:3}}>↕↔ اسحب</div>}
+              <div style={{width:'clamp(50px,25vw,160px)',height:'clamp(16px,6vw,45px)'}}/>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
 }
 
 
-// ═══════════════════════════════════════════════════
 // DOWNLOAD MODAL — pick which slides to download
 // ═══════════════════════════════════════════════════
 function DownloadModal({ slides, theme, fs, brand, onClose }: {
