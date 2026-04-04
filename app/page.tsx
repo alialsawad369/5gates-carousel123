@@ -1426,7 +1426,7 @@ export default function App(){
     const msg=chatInput.trim()
     if(!msg)return
     setChatInput('')
-    const isConfirm = /^تأكيد$|^confirm$|^تأكيد\s*$/i.test(msg)
+    const isConfirm = /^(تأكيد|confirm|ok|done|apply|yes|يلا|كمّل|perfect|looks good)$/i.test(msg.trim())
     if(isConfirm){
       setConfirming(true)
       setSlides(previewSlides)
@@ -1442,8 +1442,31 @@ export default function App(){
     setChatMsgs(newMsgs)
     setChatLoading(true)
     try{
-      const currentSlidesJson = JSON.stringify(previewSlides.map(s=>({headline:s.headline,body:s.body})))
-      const systemPrompt = `أنت مساعد متخصص في إنشاء محتوى كاروسيل للسوشيال ميديا باللغة ${aiLang==='ar'?'العربية':'الإنجليزية'} لشركة 5GATES للاستشارات المحاسبية في البحرين.\n\nالشرائح الحالية:\n${currentSlidesJson}\n\nالمستخدم سيطلب تعديلات. قم بتطبيقها وأعد إرسال الشرائح المحدّثة بالتنسيق التالي:\n\n\`\`\`json\n[{"headline":"...","body":"..."},...]\n\`\`\`\n\nثم بعد الـ JSON أضف ملخصاً قصيراً بالعربية لما تم تعديله.`
+      const currentSlidesJson = JSON.stringify(previewSlides.map((s,i)=>({index:i+1,headline:s.headline,body:s.body})))
+      const brand = BRAND_META[theme]
+      const systemPrompt = `You are a social media carousel content editor for ${brand.name} (${brand.isBizbay?'business marketplace in Bahrain':'accounting consultancy in Bahrain'}).
+
+The user will give you edit instructions in ENGLISH or ARABIC. You MUST understand and apply both languages perfectly.
+
+CURRENT SLIDES (${previewSlides.length} slides):
+${currentSlidesJson}
+
+RULES — apply the user's instruction EXACTLY:
+- "first slide heading only" or "slide 1 no body" → set body to "" for slide 1
+- "make it shorter" → shorten the text
+- "slide X should be..." → modify only that slide
+- "remove body from slide X" → set body to "" for slide X  
+- "rewrite" → rewrite all slides keeping the same topic
+- Always keep the slide COUNT the same unless asked to add/remove
+- Content language stays ${aiLang==='ar'?'Arabic':'English'} unless asked to change
+
+RESPOND with the full updated slides array as JSON, then a SHORT summary of what changed:
+
+\`\`\`json
+[{"headline":"...","body":"..."},...]
+\`\`\`
+
+Then: what you changed (1 line, in the same language the user wrote in).`
       const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({system:systemPrompt,messages:newMsgs.map(m=>({role:m.role,content:m.content}))})})
       let aiReply = ''
       if(r.ok){
@@ -1896,7 +1919,7 @@ export default function App(){
                   </div>
                 </>
               )}
-              {aiStep==='chat'&&<div style={{marginTop:8,fontSize:11,color:'#555',direction:'rtl'}}>اكتب تعديلاتك بالعربي ← AI يعدّل المحتوى ← اكتب <span style={{color:'#CC3333',fontWeight:800}}>تأكيد</span> للتحويل</div>}
+              {aiStep==='chat'&&<div style={{marginTop:8,fontSize:11,color:'#555',direction:'rtl'}}>اكتب تعديلاتك بالعربي أو الإنجليزي ← اكتب <span style={{color:'#CC3333',fontWeight:800}}>confirm</span> أو <span style={{color:'#CC3333',fontWeight:800}}>تأكيد</span> للتحويل</div>}
             </div>
 
             {aiStep==='input'&&(
@@ -2001,7 +2024,7 @@ export default function App(){
                 </div>
                 <div style={{padding:'12px 16px 16px',borderTop:'1px solid rgba(255,255,255,0.07)',flexShrink:0}}>
                   <div style={{display:'flex',gap:8,marginBottom:10}}>
-                    <input value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&!chatLoading&&sendChat()} placeholder="اطلب تعديلاً..." style={{...inp,flex:1,fontSize:13}} disabled={chatLoading}/>
+                    <input value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&!chatLoading&&sendChat()} placeholder="اكتب تعديلك... أو type in English" style={{...inp,flex:1,fontSize:13}} disabled={chatLoading}/>
                     <button onClick={sendChat} disabled={chatLoading||!chatInput.trim()} style={{...btnD,width:40,height:40,padding:0,justifyContent:'center',fontSize:18,opacity:(chatLoading||!chatInput.trim())?.4:1}}>↑</button>
                   </div>
                   <button onClick={()=>{setChatInput('تأكيد');setTimeout(sendChat,50)}} disabled={confirming||previewSlides.length===0}
