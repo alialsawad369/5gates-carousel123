@@ -1053,25 +1053,24 @@ export default function App(){
                       <button onClick={()=>setDragEditorOpen(true)} style={{...btnR,width:'100%',justifyContent:'center',marginBottom:12,fontSize:12,padding:'10px',background:'linear-gradient(135deg,rgba(204,51,51,0.8),rgba(204,51,51,0.5))',boxShadow:'none',border:'1px solid rgba(204,51,51,0.4)'}}>
                         ✥ فتح محرر السحب والإفلات
                       </button>
-                      <div style={{fontSize:10,color:'#444',marginBottom:8}}>موضع النص عمودياً</div>
-                      <input type="range" min="10" max="85" step="1"
-                        value={sl?.headY??38}
-                        onChange={e=>upd({headY:+e.target.value, bodyY:Math.min(95,+e.target.value+20)})}
-                        style={{width:'100%',accentColor:'#CC3333',marginBottom:8}}/>
-                      <div style={{display:'flex',justifyContent:'space-between',fontSize:9,color:'#444',marginBottom:10}}>
-                        <span>⬆️ أعلى</span>
-                        <span style={{color:'#CC3333'}}>{sl?.headY??38}%</span>
-                        <span>⬇️ أسفل</span>
-                      </div>
-                      <div style={{display:'flex',gap:6,marginBottom:8}}>
-                        {(['top','middle','bottom'] as TextAlign[]).map(p=>(
-                          <button key={p} onClick={()=>{
-                            const y = p==='top'?15:p==='middle'?38:65
-                            upd({textAlign:p, headY:y, bodyY:Math.min(95,y+20)})
-                          }} style={{flex:1,padding:'7px 4px',borderRadius:8,border:`1px solid ${sl?.textAlign===p?'#CC3333':'rgba(255,255,255,0.1)'}`,background:sl?.textAlign===p?'rgba(204,51,51,0.15)':'#222',color:sl?.textAlign===p?'#CC3333':'#555',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:"'Cairo',sans-serif",WebkitTapHighlightColor:'transparent'}}>
-                            {p==='top'?'أعلى':p==='middle'?'وسط':'أسفل'}
+                      <div style={{fontSize:10,color:'#444',marginBottom:8}}>الموضع السريع</div>
+                      <div style={{display:'flex',gap:6,marginBottom:12}}>
+                        {([['top','أعلى'],['middle','وسط'],['bottom','أسفل']] as [TextAlign,string][]).map(([p,label])=>(
+                          <button key={p} onClick={()=>upd({textAlign:p, headY:0, bodyY:0, textY:0})}
+                            style={{flex:1,padding:'10px 4px',borderRadius:8,border:`1px solid ${(sl?.textAlign??'middle')===p?'#CC3333':'rgba(255,255,255,0.1)'}`,background:(sl?.textAlign??'middle')===p?'rgba(204,51,51,0.15)':'#222',color:(sl?.textAlign??'middle')===p?'#CC3333':'#555',fontSize:13,fontWeight:800,cursor:'pointer',fontFamily:"'Cairo',sans-serif",WebkitTapHighlightColor:'transparent'}}>
+                            {label}
                           </button>
                         ))}
+                      </div>
+                      <div style={{fontSize:10,color:'#444',marginBottom:6}}>ضبط دقيق ⬆️⬇️</div>
+                      <input type="range" min="-100" max="100" step="5"
+                        value={sl?.textY??0}
+                        onChange={e=>upd({textY:+e.target.value, headY:+e.target.value, bodyY:+e.target.value})}
+                        style={{width:'100%',accentColor:'#CC3333',marginBottom:4}}/>
+                      <div style={{display:'flex',justifyContent:'space-between',fontSize:9,color:'#555',marginBottom:10}}>
+                        <span>⬆️</span>
+                        <span style={{color:(sl?.textY??0)!==0?'#CC3333':'#555',fontWeight:800}}>{sl?.textY??0 > 0?'+':''}{sl?.textY??0}</span>
+                        <span>⬇️</span>
                       </div>
                       <button onClick={()=>upd({headX:50,headY:38,bodyX:50,bodyY:58,textX:0,textY:0,textAlign:'middle'})} style={{...btnD,fontSize:11,padding:'5px 10px'}}>↺ إعادة ضبط</button>
                     </Sec>
