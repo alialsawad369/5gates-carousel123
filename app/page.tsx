@@ -8,6 +8,7 @@ type Slide = {
   headX?:number; headY?:number; bodyX?:number; bodyY?:number;
   uploadedBg?:string; // base64 user-uploaded image
   mode?:'carousel'|'story'; // story = 9:16
+  fs?:number; // per-slide font scale
 }
 type Theme = 'dark'|'darker'|'white'|'cream'|'darkred'|'charcoal'
 type PostStatus = 'scheduled'|'published'|'failed'|'draft'|'processing'
@@ -205,7 +206,7 @@ function SlideThumb({slide,idx,total,theme,fs,active,onClick,size=190}:{slide:Sl
     const isStory = slide.mode==='story'
     const H = isStory ? Math.round(size*16/9) : Math.round(size*1350/1080)
     if(ref.current.height !== H){ ref.current.height = H }
-    const draw=()=>{if(ref.current)drawThumb(slide,idx,total,theme,fs,ref.current,imgRef.current)}
+    const draw=()=>{if(ref.current)drawThumb(slide,idx,total,theme,slide.fs??fs,ref.current,imgRef.current)}
     const bgSrc = slide.uploadedBg || slide.bgImage
     const run=()=>{
       if(bgSrc&&(!imgRef.current||imgRef.current.src!==bgSrc)){
@@ -834,7 +835,7 @@ export default function App(){
     const r:string[]=[]
     for(let i=0;i<slides.length;i++){
       const isStory = slides[i].mode==='story'
-      r.push(await renderSlide(slides[i],i,slides.length,theme,fs,1080,isStory?Math.round(1080*16/9):1350))
+      r.push(await renderSlide(slides[i],i,slides.length,theme,slides[i].fs??fs,1080,isStory?Math.round(1080*16/9):1350))
     }
     return r
   }
@@ -999,7 +1000,7 @@ export default function App(){
                       </div>
                     </div>
                   ):slides.map((sl,i)=>(
-                    <SlideThumb key={i+'-'+theme+'-'+fs+'-'+(sl.icon||'')+'-'+(sl.bgImage||'')+'-'+(sl.uploadedBg?'up':'')+'-'+(sl.textAlign||'')+'-'+(sl.headX||0)+'-'+(sl.headY||0)+'-'+(sl.bodyX||0)+'-'+(sl.bodyY||0)+'-'+(sl.mode||'carousel')}
+                    <SlideThumb key={i+'-'+theme+'-'+(sl.fs??fs)+'-'+(sl.icon||'')+'-'+(sl.bgImage||'')+'-'+(sl.uploadedBg?'up':'')+'-'+(sl.textAlign||'')+'-'+(sl.headX||0)+'-'+(sl.headY||0)+'-'+(sl.bodyX||0)+'-'+(sl.bodyY||0)+'-'+(sl.mode||'carousel')}
                       slide={sl} idx={i} total={slides.length} theme={theme} fs={fs} active={active===i} onClick={()=>setActive(i)} size={sl.mode==='story'?135:180}/>
                   ))}
                 </div>
@@ -1018,8 +1019,6 @@ export default function App(){
                         </div>
                       ))}
                     </div>
-                    <div style={{fontSize:9,color:'#444',marginBottom:4}}>حجم الخط — {Math.round(fs*100)}%</div>
-                    <input type="range" min="0.7" max="1.4" step="0.05" value={fs} onChange={e=>setFs(+e.target.value)} style={{width:'100%',accentColor:'#CC3333'}}/>
                   </Sec>
 
                   {slides.length>0&&<>
@@ -1080,6 +1079,8 @@ export default function App(){
                       <textarea value={eHead} onChange={e=>setEHead(e.target.value)} rows={2} style={{...inp,resize:'none',lineHeight:1.8,marginBottom:10,fontSize:12}}/>
                       <div style={{fontSize:10,color:'#444',marginBottom:4}}>النص</div>
                       <textarea value={eBody} onChange={e=>setEBody(e.target.value)} rows={2} style={{...inp,resize:'none',lineHeight:1.8,marginBottom:10,fontSize:12}}/>
+                      <div style={{fontSize:10,color:'#444',marginBottom:4}}>حجم الخط — {Math.round((sl?.fs??1.0)*100)}%</div>
+                      <input type="range" min="0.7" max="1.4" step="0.05" value={sl?.fs??1.0} onChange={e=>upd({fs:+e.target.value})} style={{width:'100%',accentColor:'#CC3333',marginBottom:12}}/>
                       <div style={{fontSize:10,color:'#444',marginBottom:6}}>الأيقونة</div>
                       <div style={{display:'flex',flexWrap:'wrap',gap:5,marginBottom:10}}>
                         {Object.entries(ICONS).map(([k,v])=>(
@@ -1339,7 +1340,7 @@ export default function App(){
         <DragEditor
           slide={sl}
           theme={theme}
-          fs={fs}
+          fs={sl?.fs??fs}
           onSave={updates => upd(updates)}
           onClose={() => setDragEditorOpen(false)}
         />
