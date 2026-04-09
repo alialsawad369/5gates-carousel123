@@ -1036,45 +1036,44 @@ export default function App(){
                     </Sec>
 
                     <Sec label="صورة الخلفية 🖼️">
-                      {/* User upload button */}
                       <input ref={uploadBgRef} type="file" accept="image/*" onChange={handleBgUpload} style={{display:'none'}}/>
-                      <button onClick={()=>uploadBgRef.current?.click()} style={{width:'100%',background:sl?.uploadedBg?'rgba(204,51,51,0.08)':'#111',border:`1px dashed ${sl?.uploadedBg?'#CC3333':'rgba(255,255,255,0.12)'}`,borderRadius:10,padding:'10px',cursor:'pointer',color:sl?.uploadedBg?'#CC3333':'#444',fontFamily:"'Cairo',sans-serif",fontSize:12,display:'flex',alignItems:'center',justifyContent:'center',gap:6,marginBottom:8,fontWeight:700}}>
-                        {sl?.uploadedBg ? '🖼️ صورتك المرفوعة ✓ (غيّر)' : '⬆️ ارفع صورتك'}
+                      <button onClick={()=>uploadBgRef.current?.click()} style={{width:'100%',background:sl?.uploadedBg?'rgba(204,51,51,0.08)':'#111',border:`1px dashed ${sl?.uploadedBg?'#CC3333':'rgba(255,255,255,0.12)'}`,borderRadius:10,padding:'12px',cursor:'pointer',color:sl?.uploadedBg?'#CC3333':'#444',fontFamily:"'Cairo',sans-serif",fontSize:12,display:'flex',alignItems:'center',justifyContent:'center',gap:6,marginBottom:8,fontWeight:700}}>
+                        {sl?.uploadedBg ? '🖼️ صورتك المرفوعة ✓ (غيّر)' : '⬆️ ارفع صورة خلفية'}
                       </button>
                       {sl?.uploadedBg && (
-                        <button onClick={()=>upd({uploadedBg:undefined})} style={{...btnD,width:'100%',justifyContent:'center',fontSize:11,color:'#ff5555',marginBottom:8}}>✕ حذف الصورة المرفوعة</button>
+                        <button onClick={()=>upd({uploadedBg:undefined})} style={{...btnD,width:'100%',justifyContent:'center',fontSize:11,color:'#ff5555',marginBottom:8}}>✕ حذف الصورة</button>
                       )}
-                      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:5,marginBottom:sl?.bgImage?8:0}}>
-                        {BG_IMAGES.map((bg,i)=>(
-                          <div key={i} onClick={()=>upd({bgImage:bg.url||undefined,uploadedBg:undefined})}
-                            style={{aspectRatio:'1',borderRadius:7,overflow:'hidden',cursor:'pointer',border:`2px solid ${!sl?.uploadedBg&&(sl?.bgImage||'')===(bg.url)?'#CC3333':'transparent'}`,background:'#111',position:'relative',opacity:sl?.uploadedBg?0.4:1}}>
-                            {bg.url?<img src={bg.url} alt={bg.label} style={{width:'100%',height:'100%',objectFit:'cover'}} loading="lazy"/>
-                              :<div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,color:'#333',fontFamily:"'Cairo',sans-serif",textAlign:'center',padding:2}}>✕<br/>بدون</div>}
-                            {!sl?.uploadedBg&&(sl?.bgImage||'')===(bg.url)&&<div style={{position:'absolute',top:2,right:2,width:12,height:12,background:'#CC3333',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:7,color:'#fff'}}>✓</div>}
-                          </div>
-                        ))}
-                      </div>
-                      {(sl?.bgImage||sl?.uploadedBg)&&<>
+                      {sl?.uploadedBg&&<>
                         <div style={{fontSize:9,color:'#444',marginBottom:4,marginTop:4}}>شفافية التعتيم — {Math.round((sl.overlayOpacity??0.72)*100)}%</div>
                         <input type="range" min="0.2" max="0.95" step="0.05" value={sl.overlayOpacity??0.72} onChange={e=>upd({overlayOpacity:+e.target.value})} style={{width:'100%',accentColor:'#CC3333'}}/>
                       </>}
                     </Sec>
 
                     <Sec label="موضع النص 🎯">
-                      {/* Drag editor button */}
-                      <button onClick={()=>setDragEditorOpen(true)} style={{...btnR,width:'100%',justifyContent:'center',marginBottom:10,fontSize:12,padding:'10px',background:'linear-gradient(135deg,rgba(204,51,51,0.8),rgba(204,51,51,0.5))',boxShadow:'none',border:'1px solid rgba(204,51,51,0.4)'}}>
+                      <button onClick={()=>setDragEditorOpen(true)} style={{...btnR,width:'100%',justifyContent:'center',marginBottom:12,fontSize:12,padding:'10px',background:'linear-gradient(135deg,rgba(204,51,51,0.8),rgba(204,51,51,0.5))',boxShadow:'none',border:'1px solid rgba(204,51,51,0.4)'}}>
                         ✥ فتح محرر السحب والإفلات
                       </button>
-                      <div style={{fontSize:10,color:'#444',marginBottom:6}}>الموضع العمودي السريع</div>
-                      <div style={{display:'flex',gap:6,marginBottom:10}}>
+                      <div style={{fontSize:10,color:'#444',marginBottom:8}}>موضع النص عمودياً</div>
+                      <input type="range" min="10" max="85" step="1"
+                        value={sl?.headY??38}
+                        onChange={e=>upd({headY:+e.target.value, bodyY:Math.min(95,+e.target.value+20)})}
+                        style={{width:'100%',accentColor:'#CC3333',marginBottom:8}}/>
+                      <div style={{display:'flex',justifyContent:'space-between',fontSize:9,color:'#444',marginBottom:10}}>
+                        <span>⬆️ أعلى</span>
+                        <span style={{color:'#CC3333'}}>{sl?.headY??38}%</span>
+                        <span>⬇️ أسفل</span>
+                      </div>
+                      <div style={{display:'flex',gap:6,marginBottom:8}}>
                         {(['top','middle','bottom'] as TextAlign[]).map(p=>(
-                          <button key={p} onClick={()=>upd({textAlign:p})} style={{flex:1,padding:'7px 4px',borderRadius:8,border:`1px solid ${sl?.textAlign===p?'#CC3333':'rgba(255,255,255,0.1)'}`,background:sl?.textAlign===p?'rgba(204,51,51,0.15)':'#222',color:sl?.textAlign===p?'#CC3333':'#555',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:"'Cairo',sans-serif",WebkitTapHighlightColor:'transparent'}}>
-                            {p==='top'?'⬆️ أعلى':p==='middle'?'↔️ وسط':'⬇️ أسفل'}
+                          <button key={p} onClick={()=>{
+                            const y = p==='top'?15:p==='middle'?38:65
+                            upd({textAlign:p, headY:y, bodyY:Math.min(95,y+20)})
+                          }} style={{flex:1,padding:'7px 4px',borderRadius:8,border:`1px solid ${sl?.textAlign===p?'#CC3333':'rgba(255,255,255,0.1)'}`,background:sl?.textAlign===p?'rgba(204,51,51,0.15)':'#222',color:sl?.textAlign===p?'#CC3333':'#555',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:"'Cairo',sans-serif",WebkitTapHighlightColor:'transparent'}}>
+                            {p==='top'?'أعلى':p==='middle'?'وسط':'أسفل'}
                           </button>
                         ))}
                       </div>
-                      <div style={{fontSize:9,color:'#333',marginBottom:2}}>العنوان: {sl?.headX??50}%, {sl?.headY??38}% · النص: {sl?.bodyX??50}%, {sl?.bodyY??58}%</div>
-                      <button onClick={()=>upd({headX:50,headY:38,bodyX:50,bodyY:58,textX:0,textY:0,textAlign:'middle'})} style={{...btnD,fontSize:11,padding:'5px 10px',marginTop:4}}>↺ إعادة ضبط</button>
+                      <button onClick={()=>upd({headX:50,headY:38,bodyX:50,bodyY:58,textX:0,textY:0,textAlign:'middle'})} style={{...btnD,fontSize:11,padding:'5px 10px'}}>↺ إعادة ضبط</button>
                     </Sec>
 
                     <Sec label={`تعديل الشريحة ${active+1}`}>
