@@ -94,9 +94,9 @@ async function renderSlide(slide:Slide,idx:number,total:number,theme:Theme,fontS
   ctx.fillStyle=t.hl; ctx.beginPath(); ctx.roundRect(W-195,CH*0.845,115,7,4); ctx.fill()
 
   const icon=getIcon(slide.headline,slide.icon)
-  ctx.font=`${Math.round(160*fs)}px serif`; ctx.globalAlpha=0.12; ctx.textAlign='left'; ctx.textBaseline='top'; ctx.fillText(icon,60,CH*0.07); ctx.globalAlpha=1
-  ctx.font=`${Math.round(88*fs)}px serif`; ctx.textAlign='right'; ctx.textBaseline='top'; ctx.fillText(icon,W-75,72)
-  ctx.font=`900 ${Math.round(30*fs)}px 'Tajawal','Cairo',sans-serif`
+  ctx.font=`160px serif`; ctx.globalAlpha=0.12; ctx.textAlign='left'; ctx.textBaseline='top'; ctx.fillText(icon,60,CH*0.07); ctx.globalAlpha=1
+  ctx.font=`88px serif`; ctx.textAlign='right'; ctx.textBaseline='top'; ctx.fillText(icon,W-75,72)
+  ctx.font=`900 30px 'Tajawal','Cairo',sans-serif`
   ctx.fillStyle=bgSrc?'rgba(255,255,255,0.5)':t.brand; ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText('5GATES',W/2,65)
 
   // Headline position - use headX/headY if set, otherwise fall back to textX/textY
@@ -137,8 +137,8 @@ async function renderSlide(slide:Slide,idx:number,total:number,theme:Theme,fontS
   }
 
   const fy=CH-110
-  ctx.font=`700 ${Math.round(26*fs)}px 'Cairo',sans-serif`; ctx.fillStyle=bgSrc?'rgba(255,255,255,0.4)':t.brand
-  ctx.textAlign='right'; ctx.textBaseline='middle'; ctx.fillText(slide.handle||'@5gates.bh',W-80,fy+22)
+  ctx.font=`700 26px 'Cairo',sans-serif`; ctx.fillStyle=bgSrc?'rgba(255,255,255,0.4)':t.brand
+  ctx.textAlign='right'; ctx.textBaseline='middle'; ctx.fillText(slide.handle||'@fivegates.bh',W-80,fy+22)
   if(!isStory){
     const dc=Math.min(total,7),dw=14,aw=44,dh=14,dg=8; let dx=(W-(dc*dw+(dc-1)*dg+(aw-dw)))/2
     for(let d=0;d<dc;d++){
@@ -160,10 +160,10 @@ function drawThumb(slide:Slide,idx:number,total:number,theme:Theme,fs:number,can
   gr.addColorStop(0,theme==='darkred'?'rgba(204,51,51,0.5)':'rgba(204,51,51,0.25)')
   gr.addColorStop(1,'transparent'); ctx.fillStyle=gr; ctx.fillRect(0,0,W,H)
   ctx.fillStyle=t.hl; ctx.beginPath(); ctx.roundRect(W-195*W/1080,H*0.845,115*W/1080,7*H/1350,4); ctx.fill()
-  ctx.font=`${Math.round(88*pfs)}px serif`; ctx.textAlign='right'; ctx.textBaseline='top'
+  ctx.font=`${Math.round(88*W/1080)}px serif`; ctx.textAlign='right'; ctx.textBaseline='top'
   ctx.fillText(getIcon(slide.headline,slide.icon),W-75*W/1080,72*H/(isStory?1920:1350))
   const F="'Cairo','Tajawal',Arial,sans-serif"
-  ctx.font=`900 ${Math.round(30*pfs)}px ${F}`
+  ctx.font=`900 ${Math.round(30*W/1080)}px ${F}`
   ctx.fillStyle=(slide.bgImage||slide.uploadedBg)?'rgba(255,255,255,0.5)':t.brand; ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText('5GATES',W/2,65*H/(isStory?1920:1350))
   const hxOff=(slide.headX??slide.textX??0)/100*W*0.3
   const hyOff=(slide.headY??slide.textY??0)/100*H*0.25
@@ -472,7 +472,7 @@ function DragEditor({slide, theme, fs, onSave, onClose}: {
 
           {/* Handle bar bottom */}
           <div style={{position:'absolute',bottom:'4%',right:'5%',fontFamily:"'Cairo',sans-serif",fontWeight:700,fontSize:'clamp(7px,1.8vw,13px)',color:hasBg?'rgba(255,255,255,0.35)':t.brand,pointerEvents:'none'}}>
-            {slide.handle||'@5gates.bh'}
+            {slide.handle||'@fivegates.bh'}
           </div>
           <div style={{position:'absolute',bottom:'3%',right:'5%',width:'8%',height:3,borderRadius:2,background:'#CC3333',pointerEvents:'none'}}/>
         </div>
@@ -562,7 +562,7 @@ ${imgData ? 'الصورة المرفوعة: استخدمها كخلفية للب
     onApply({
       headline: result.headline,
       body: result.body,
-      handle: '@5gates.bh',
+      handle: '@fivegates.bh',
       uploadedBg: imgData || undefined,
       overlayOpacity: imgData ? 0.65 : 0.72,
       mode: outputMode,
@@ -674,7 +674,7 @@ export default function App(){
   const [active,setActive]=useState(0)
   const [theme,setTheme]=useState<Theme>('dark')
   const [fs,setFs]=useState(1.0)
-  const [eHead,setEHead]=useState(''); const [eBody,setEBody]=useState(''); const [eHandle,setEHandle]=useState('@5gates.bh')
+  const [eHead,setEHead]=useState(''); const [eBody,setEBody]=useState(''); const [eHandle,setEHandle]=useState('@fivegates.bh')
   const [caption,setCaption]=useState(''); const [schedDate,setSchedDate]=useState(''); const [schedTime,setSchedTime]=useState('09:00')
   const [uploading,setUploading]=useState(false); const [schedMsg,setSchedMsg]=useState('')
   const [aiOpen,setAiOpen]=useState(false)
@@ -816,7 +816,7 @@ export default function App(){
       }
       const parsed = parseSlidesFromText(aiReply)
       if(parsed){
-        const updSlides = parsed.map(s=>({...s,textAlign:'middle' as TextAlign,overlayOpacity:0.72,handle:'@5gates.bh',mode:aiSlideMode}))
+        const updSlides = parsed.map(s=>({...s,textAlign:'middle' as TextAlign,overlayOpacity:0.72,handle:'@fivegates.bh',mode:aiSlideMode}))
         setPreviewSlides(updSlides)
         const cleanReply = aiReply.replace(/```json[\s\S]+?```/g,'').trim()
         const previewText = updSlides.map((sl,i)=>`**شريحة ${i+1}:** ${sl.headline.replace(/\*+/g,'')}\n${sl.body||''}`).join('\n\n')
@@ -963,10 +963,10 @@ export default function App(){
                       <button onClick={e=>{e.stopPropagation();const n=[...slides];n.splice(i,1);setSlides(n);setActive(Math.max(0,i===active?i-1:active))}} style={{background:'none',border:'none',color:'#333',width:26,cursor:'pointer',fontSize:13,flexShrink:0}}>✕</button>
                     </div>
                   ))}
-                  <button onClick={()=>{setSlides(p=>[...p,{headline:'**عنوان** جديد',body:'نص الشريحة...',handle:'@5gates.bh',textAlign:'middle',overlayOpacity:0.72,mode:'carousel'}]);setActive(slides.length);setMPanel('preview')}} style={{width:'100%',background:'none',border:'1px dashed rgba(255,255,255,0.1)',borderRadius:10,color:'#444',fontFamily:"'Cairo',sans-serif",fontSize:13,padding:'9px',cursor:'pointer',marginTop:4}}>
+                  <button onClick={()=>{setSlides(p=>[...p,{headline:'**عنوان** جديد',body:'نص الشريحة...',handle:'@fivegates.bh',textAlign:'middle',overlayOpacity:0.72,mode:'carousel'}]);setActive(slides.length);setMPanel('preview')}} style={{width:'100%',background:'none',border:'1px dashed rgba(255,255,255,0.1)',borderRadius:10,color:'#444',fontFamily:"'Cairo',sans-serif",fontSize:13,padding:'9px',cursor:'pointer',marginTop:4}}>
                     + كاروسيل
                   </button>
-                  <button onClick={()=>{setSlides(p=>[...p,{headline:'**عنوان** جديد',body:'نص الشريحة...',handle:'@5gates.bh',textAlign:'middle',overlayOpacity:0.72,mode:'story'}]);setActive(slides.length);setMPanel('preview')}} style={{width:'100%',background:'none',border:'1px dashed rgba(100,100,255,0.2)',borderRadius:10,color:'#555',fontFamily:"'Cairo',sans-serif",fontSize:13,padding:'9px',cursor:'pointer',marginTop:6}}>
+                  <button onClick={()=>{setSlides(p=>[...p,{headline:'**عنوان** جديد',body:'نص الشريحة...',handle:'@fivegates.bh',textAlign:'middle',overlayOpacity:0.72,mode:'story'}]);setActive(slides.length);setMPanel('preview')}} style={{width:'100%',background:'none',border:'1px dashed rgba(100,100,255,0.2)',borderRadius:10,color:'#555',fontFamily:"'Cairo',sans-serif",fontSize:13,padding:'9px',cursor:'pointer',marginTop:6}}>
                     + ستوري 📱
                   </button>
                   <div style={{marginTop:14,marginBottom:7,fontSize:9,fontWeight:800,letterSpacing:2,color:'#333',textTransform:'uppercase'}}>مواضيع سريعة</div>
@@ -1356,7 +1356,7 @@ export default function App(){
               ...newSlide,
               headline: newSlide.headline || '**عنوان** الشريحة',
               body: newSlide.body || '',
-              handle: '@5gates.bh',
+              handle: '@fivegates.bh',
             } as Slide])
             setActive(slides.length)
             setMPanel('preview')
