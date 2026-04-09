@@ -764,16 +764,8 @@ export default function App(){
       const d=await r.json(); if(d.error)throw new Error(d.error)
       const generatedSlides: Slide[] = d.slides.map((s:any)=>({...s,textAlign:'middle',overlayOpacity:0.72,mode:aiSlideMode}))
       setPreviewSlides(generatedSlides)
-      const previewText = generatedSlides.map((sl,i)=>`**شريحة ${i+1}:** ${sl.headline.replace(/\*+/g,'')}\
-${sl.body||''}`).join('\
-\
-')
-      const assistantMsg: ChatMsg = { role:'assistant', content: `✦ ${aiPostMode==='post'?'هذا مقترح البوست':'هذه مقترحات الكاروسيل'} (${generatedSlides.length} ${generatedSlides.length===1?'شريحة':'شرائح'}) — نوع: ${aiSlideMode==='story'?'📱 ستوري':'🎠 كاروسيل'}:\
-\
-${previewText}\
-\
----\
-قل لي أي تعديل تريد، أو اكتب **"تأكيد"** للتحويل.` }
+      const previewText = generatedSlides.map((sl,i)=>`**شريحة ${i+1}:** ${sl.headline.replace(/\*+/g,'')}\n${sl.body||''}`).join('\n\n')
+      const assistantMsg: ChatMsg = { role:'assistant', content: `✦ ${aiPostMode==='post'?'هذا مقترح البوست':'هذه مقترحات الكاروسيل'} (${generatedSlides.length} ${generatedSlides.length===1?'شريحة':'شرائح'}) — نوع: ${aiSlideMode==='story'?'📱 ستوري':'🎠 كاروسيل'}:\n\n${previewText}\n\n---\nقل لي أي تعديل تريد، أو اكتب **"تأكيد"** للتحويل.` }
       setChatMsgs([userMsg, assistantMsg])
     }catch(e:any){
       setChatMsgs(prev=>[...prev,{role:'assistant',content:`خطأ: ${e.message}`}])
@@ -804,18 +796,7 @@ ${previewText}\
     setChatLoading(true)
     try{
       const currentSlidesJson = JSON.stringify(previewSlides.map(s=>({headline:s.headline,body:s.body})))
-      const systemPrompt = `أنت مساعد متخصص في إنشاء محتوى كاروسيل للسوشيال ميديا باللغة ${aiLang==='ar'?'العربية':'الإنجليزية'} لشركة 5GATES للاستشارات المحاسبية في البحرين.\
-\
-الشرائح الحالية:\
-${currentSlidesJson}\
-\
-المستخدم سيطلب تعديلات. قم بتطبيقها وأعد إرسال الشرائح المحدّثة بالتنسيق التالي:\
-\
-\`\`\`json\
-[{"headline":"...","body":"..."},...]\
-\`\`\`\
-\
-ثم بعد الـ JSON أضف ملخصاً قصيراً بالعربية لما تم تعديله.`
+      const systemPrompt = `أنت مساعد متخصص في إنشاء محتوى كاروسيل للسوشيال ميديا باللغة ${aiLang==='ar'?'العربية':'الإنجليزية'} لشركة 5GATES للاستشارات المحاسبية في البحرين.\n\nالشرائح الحالية:\n${currentSlidesJson}\n\nالمستخدم سيطلب تعديلات. قم بتطبيقها وأعد إرسال الشرائح المحدّثة بالتنسيق التالي:\n\n\`\`\`json\n[{"headline":"...","body":"..."},...]\n\`\`\`\n\nثم بعد الـ JSON أضف ملخصاً قصيراً بالعربية لما تم تعديله.`
       const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({system:systemPrompt,messages:newMsgs.map(m=>({role:m.role,content:m.content}))})})
       let aiReply = ''
       if(r.ok){
@@ -828,16 +809,8 @@ ${currentSlidesJson}\
         if(!gd.error && gd.slides){
           const updatedSlides: Slide[] = gd.slides.map((s:any)=>({...s,textAlign:'middle',overlayOpacity:0.72,mode:aiSlideMode}))
           setPreviewSlides(updatedSlides)
-          const previewText = updatedSlides.map((sl,i)=>`**شريحة ${i+1}:** ${sl.headline.replace(/\*+/g,'')}\
-${sl.body||''}`).join('\
-\
-')
-          aiReply = `✦ تم التعديل:\
-\
-${previewText}\
-\
----\
-اكتب **"تأكيد"** للمتابعة أو أخبرني بأي تعديل آخر.`
+          const previewText = updatedSlides.map((sl,i)=>`**شريحة ${i+1}:** ${sl.headline.replace(/\*+/g,'')}\n${sl.body||''}`).join('\n\n')
+          aiReply = `✦ تم التعديل:\n\n${previewText}\n\n---\nاكتب **"تأكيد"** للمتابعة أو أخبرني بأي تعديل آخر.`
         }
       }
       const parsed = parseSlidesFromText(aiReply)
@@ -845,18 +818,8 @@ ${previewText}\
         const updSlides = parsed.map(s=>({...s,textAlign:'middle' as TextAlign,overlayOpacity:0.72,handle:'@5gates.bh',mode:aiSlideMode}))
         setPreviewSlides(updSlides)
         const cleanReply = aiReply.replace(/```json[\s\S]+?```/g,'').trim()
-        const previewText = updSlides.map((sl,i)=>`**شريحة ${i+1}:** ${sl.headline.replace(/\*+/g,'')}\
-${sl.body||''}`).join('\
-\
-')
-        setChatMsgs([...newMsgs,{role:'assistant',content:`✦ تم التعديل:\
-\
-${previewText}\
-\
----\
-${cleanReply}\
-\
-اكتب **"تأكيد"** للمتابعة.`}])
+        const previewText = updSlides.map((sl,i)=>`**شريحة ${i+1}:** ${sl.headline.replace(/\*+/g,'')}\n${sl.body||''}`).join('\n\n')
+        setChatMsgs([...newMsgs,{role:'assistant',content:`✦ تم التعديل:\n\n${previewText}\n\n---\n${cleanReply}\n\nاكتب **"تأكيد"** للمتابعة.`}])
       } else {
         setChatMsgs([...newMsgs,{role:'assistant',content:aiReply||'تم التعديل. اكتب **"تأكيد"** للمتابعة أو أخبرني بأي تعديل آخر.'}])
       }
@@ -1136,8 +1099,7 @@ ${cleanReply}\
 
                   <Sec label="الجدولة والنشر">
                     <div style={{fontSize:10,color:'#444',marginBottom:4}}>الكابشن</div>
-                    <textarea value={caption} onChange={e=>setCaption(e.target.value)} rows={3} style={{...inp,resize:'none',lineHeight:1.7,fontSize:12,marginBottom:10}} placeholder={'تابعونا 💼\
-#5gates #محاسبة #البحرين'}/>
+                    <textarea value={caption} onChange={e=>setCaption(e.target.value)} rows={3} style={{...inp,resize:'none',lineHeight:1.7,fontSize:12,marginBottom:10}} placeholder={'تابعونا 💼\n#5gates #محاسبة #البحرين'}/>
                     <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10}}>
                       <div><div style={{fontSize:10,color:'#444',marginBottom:4}}>التاريخ</div><input type="date" value={schedDate} onChange={e=>setSchedDate(e.target.value)} style={{...inp,fontSize:12}}/></div>
                       <div><div style={{fontSize:10,color:'#444',marginBottom:4}}>الوقت</div><input type="time" value={schedTime} onChange={e=>setSchedTime(e.target.value)} style={{...inp,fontSize:12}}/></div>
@@ -1329,8 +1291,7 @@ ${cleanReply}\
                             <div style={{marginBottom:10}}>{previewSlides.map((sl,si)=><SlidePreviewCard key={si} slide={sl} idx={si}/>)}</div>
                           )}
                           <div style={{background:'#222',border:'1px solid rgba(255,255,255,0.07)',borderRadius:'4px 12px 12px 12px',padding:'9px 13px',fontSize:12,color:'rgba(240,237,232,0.7)',lineHeight:1.8,direction:'rtl',whiteSpace:'pre-wrap'}}>
-                            {msg.content.includes('---') ? msg.content.split('---').slice(-1)[0].trim() : msg.content.replace(/\*\*شريحة \d+:\*\*.+\
-?.*/g,'').trim()}
+                            {msg.content.includes('---') ? msg.content.split('---').slice(-1)[0].trim() : msg.content.replace(/\*\*شريحة \d+:\*\*.+\n?.*/g,'').trim()}
                           </div>
                         </div>
                       )}
